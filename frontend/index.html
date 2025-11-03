@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Parser Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        @keyframes move {
+          100% {
+            transform: translate3d(0, 0, 1px) rotate(360deg);
+          }
+        }
+
+        @keyframes slide {
+          0% {
+            transform:translateX(-25%);
+          }
+          100% {
+            transform:translateX(25%);
+          }
+        }
+
+        .background {
+          position: fixed;
+          width: 100vw;
+          height: 100vh;
+          top: 0;
+          left: 0;
+          background: #4CB8B6;
+          overflow: hidden;
+          z-index: -1;
+        }
+
+        .ball {
+          position: absolute;
+          width: 20vmin;
+          height: 20vmin;
+          border-radius: 50%;
+          backface-visibility: hidden;
+          animation: move linear infinite;
+        }
+
+        .ball:nth-child(odd) {
+            color: #006D5B;
+        }
+
+        .ball:nth-child(even) {
+            color: #FF6F61;
+        }
+
+        .ball:nth-child(1) {
+          top: 77%;
+          left: 88%;
+          animation-duration: 40s;
+          animation-delay: -3s;
+          transform-origin: 16vw -2vh;
+          box-shadow: 40vmin 0 5.703076368487546vmin currentColor;
+        }
+        .ball:nth-child(2) {
+          top: 42%;
+          left: 2%;
+          animation-duration: 53s;
+          animation-delay: -29s;
+          transform-origin: -19vw 21vh;
+          box-shadow: -40vmin 0 5.17594621519026vmin currentColor;
+        }
+        .ball:nth-child(3) {
+          top: 28%;
+          left: 18%;
+          animation-duration: 49s;
+          animation-delay: -8s;
+          transform-origin: -22vw 3vh;
+          box-shadow: 40vmin 0 5.248179047256236vmin currentColor;
+        }
+        .ball:nth-child(4) {
+          top: 50%;
+          left: 79%;
+          animation-duration: 26s;
+          animation-delay: -21s;
+          transform-origin: -17vw -6vh;
+          box-shadow: 40vmin 0 5.279749632220298vmin currentColor;
+        }
+        .ball:nth-child(5) {
+          top: 46%;
+          left: 15%;
+          animation-duration: 36s;
+          animation-delay: -40s;
+          transform-origin: 4vw 0vh;
+          box-shadow: -40vmin 0 5.964309466052033vmin currentColor;
+        }
+        .ball:nth-child(6) {
+          top: 77%;
+          left: 16%;
+          animation-duration: 31s;
+          animation-delay: -10s;
+          transform-origin: 18vw 4vh;
+          box-shadow: 40vmin 0 5.178483653434181vmin currentColor;
+        }
+        .ball:nth-child(7) {
+          top: 22%;
+          left: 17%;
+          animation-duration: 55s;
+          animation-delay: -6s;
+          transform-origin: 1vw -23vh;
+          box-shadow: -40vmin 0 5.703026794398318vmin currentColor;
+        }
+        .ball:nth-child(8) {
+          top: 41%;
+          left: 47%;
+          animation-duration: 43s;
+          animation-delay: -28s;
+          transform-origin: 25vw -3vh;
+          box-shadow: 40vmin 0 5.196265905749415vmin currentColor;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            text-align: center;
+            min-height: 100vh;
+            padding: 20px;
+            color: #140707;
+            position: relative;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container { 
+            background: white; 
+            border-radius: 16px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+            max-width: 1200px; 
+            width: 100%; 
+            padding: 40px; 
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
+        }
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            right: -50%;
+            bottom: 0;
+            background-image: linear-gradient(-60deg, #6c3 50%, #09f 50%);
+            opacity: .1;
+            animation: slide 3s ease-in-out infinite alternate;
+            z-index: 0;
+        }
+        .container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            right: -50%;
+            bottom: 0;
+            background-image: linear-gradient(-60deg, #09f 50%, #6c3 50%);
+            opacity: .05;
+            animation: slide 4s ease-in-out infinite alternate-reverse;
+            z-index: 0;
+        }
+        h1 { color: #333; margin-bottom: 10px; font-size: 28px; position: relative; z-index: 1; }
+        .subtitle { color: #666; margin-bottom: 30px; position: relative; z-index: 1; }
+        .upload-area { 
+            border: 1px solid #e1e5e9; 
+            border-radius: 12px; 
+            padding: 50px 30px; 
+            text-align: center; 
+            transition: all 0.3s; 
+            cursor: pointer; 
+            background: #fafbfc; 
+            position: relative; 
+            z-index: 1;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover { 
+            border-color: #667eea; 
+            background: #f8f9ff; 
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.1);
+        }
+        .upload-area.dragover { 
+            border-color: #667eea; 
+            background: #f0f2ff; 
+            transform: scale(1.01);
+        }
+        .upload-area.bulk { border-color: #28a745; }
+        input[type="file"] { display: none; }
+        .upload-icon { 
+            font-size: 56px; 
+            margin-bottom: 20px; 
+            opacity: 0.8;
+        }
+        .feature-card {
+    background: linear-gradient(135deg, #77256582 0%, #e5b0e3 50%, #77256582 100%);
+    border-radius: 12px;
+    padding: 30px;
+    margin: 20px 0;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+    border: 1px solid rgba(102, 126, 234, 0.1);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.feature-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);
+    background: linear-gradient(135deg, #77256582 0%, #e5b0e3 50%, #77256582 100%);
+}
+        .feature-icon {
+            font-size: 42px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        .feature-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+        }
+        .feature-description {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        button { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            border: none; 
+            padding: 12px 32px; 
+            border-radius: 8px; 
+            font-size: 16px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            position: relative; 
+            z-index: 1; 
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        button:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:active { 
+            transform: translateY(0); 
+        }
+        button:disabled { 
+            opacity: 0.6; 
+            cursor: not-allowed; 
+            transform: none;
+        }
+        
+        .results { margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; display: none; position: relative; z-index: 1; }
+        .results.show { display: block; }
+        .results h2 { color: #333; margin-bottom: 16px; font-size: 20px; }
+        .metadata { background: white; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+        .metadata-item { display: flex; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .metadata-item:last-child { border-bottom: none; }
+        .label { font-weight: 600; color: #667eea; width: 150px; }
+        .value { color: #333; flex: 1; }
+        .loading { text-align: center; padding: 20px; display: none; position: relative; z-index: 1; }
+        .loading.show { display: block; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .line-items { margin-top: 16px; overflow-x: auto; position: relative; z-index: 1; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #667eea; color: white; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        .status { padding: 8px 12px; border-radius: 4px; font-size: 14px; margin-bottom: 10px; position: relative; z-index: 1; }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .file-list { margin: 16px 0; text-align: left; max-height: 200px; overflow-y: auto; position: relative; z-index: 1; }
+        .file-item { padding: 8px 12px; background: white; margin: 4px 0; border-radius: 6px; border-left: 4px solid #667eea; }
+        
+        .tab-container { margin: 20px 0; position: relative; z-index: 1; }
+        .tabs { 
+            display: flex; 
+            gap: 16px;
+            margin-bottom: 20px; 
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .tab { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            border: none; 
+            padding: 12px 32px; 
+            border-radius: 8px; 
+            font-size: 16px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            position: relative; 
+            z-index: 1; 
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            flex: 1;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        .tab:hover {
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        .tab.active { 
+            background: linear-gradient(135deg, #086f5c 0%, #d36e30 100%);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+            transform: translateY(-1px);
+        }
+        .tab-content { display: none; position: relative; z-index: 1; }
+        .tab-content.active { display: block; }
+        
+        .button-group { 
+            display: flex; 
+            gap: 16px; 
+            margin-top: 20px; 
+            justify-content: center;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .download-btn { 
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
+            color: white; 
+            border: none; 
+            padding: 12px 32px; 
+            border-radius: 8px; 
+            font-size: 16px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+        .download-btn:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+        
+        .export-section { 
+            margin-top: 30px; 
+            padding: 20px; 
+            background: #f8f9fa; 
+            border-radius: 8px; 
+            border-left: 4px solid #667eea;
+            position: relative;
+            z-index: 1;
+        }
+        .export-buttons { 
+            display: flex; 
+            gap: 12px; 
+            margin-top: 12px; 
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .excel-viewer-container {
+            margin-top: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .excel-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .excel-table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .excel-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        .excel-table th {
+            position: sticky;
+            top: 0;
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            z-index: 10;
+        }
+
+        .excel-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+
+        .excel-table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .no-data-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            background: white;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            box-shadow: 0 4px 15px rgba(23, 162, 184, 0.3);
+        }
+
+        .pipeline-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .pipeline-stage {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .stage-header {
+            padding: 12px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .stage-content {
+            background: white;
+            padding: 16px;
+            border-radius: 0 0 8px 8px;
+            min-height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="background">
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+        <div class="ball"></div>
+    </div>
+    
+    <div class="container">
+        <h1>📄 Invoice Parser Pro</h1>
+        <p class="subtitle">Upload PDF invoices and extract structured data with Excel export</p>
+        
+        <div id="authStatus" class="status" style="display: none;"></div>
+        
+        <div class="tab-container">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('single')">Single File</button>
+                <button class="tab" onclick="switchTab('bulk')">Bulk Upload</button>
+                <button class="tab" onclick="switchTab('excel-viewer')">Excel Viewer</button>
+                <button class="tab" onclick="switchTab('invoice-tracking')">Invoice Tracking</button>
+            </div>
+            
+            <div id="single-tab" class="tab-content active">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <p><strong>Click to upload</strong> or drag and drop</p>
+                    <p style="color: #999; font-size: 14px; margin-top: 8px;">PDF files only</p>
+                    <input type="file" id="fileInput" accept=".pdf">
+                </div>
+                <div class="button-group">
+                    <button id="parseBtn" disabled>Parse Invoice</button>
+                </div>
+            </div>
+            
+            <div id="bulk-tab" class="tab-content">
+                <div class="upload-area bulk" id="bulkUploadArea">
+                    <div class="upload-icon">📂</div>
+                    <p><strong>Click to upload multiple files</strong> or drag and drop</p>
+                    <p style="color: #999; font-size: 14px; margin-top: 8px;">Select multiple PDF files</p>
+                    <input type="file" id="bulkFileInput" accept=".pdf" multiple>
+                </div>
+                <div id="fileList" class="file-list" style="display: none;"></div>
+                <div class="button-group">
+                    <button id="bulkParseBtn" disabled>Parse All Invoices</button>
+                </div>
+            </div>
+
+            <div id="excel-viewer-tab" class="tab-content">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-title">Excel Data Analysis</div>
+                    <div class="feature-description">
+                        View and analyze all parsed invoice data in a structured table format. 
+                        Monitor data quality, export insights, and track parsing performance metrics.
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="refresh-btn" onclick="loadExcelData()">🔄 Refresh Data</button>
+                    <button class="download-btn" onclick="downloadXLSX()">📥 Download Excel</button>
+                </div>
+
+                <div class="excel-viewer-container">
+                    <div id="excelLoading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Loading Excel data...</p>
+                    </div>
+
+                    <div id="excelStats" class="excel-stats" style="display: none;"></div>
+
+                    <div id="excelData" style="display: none;">
+                        <h3 style="margin-bottom: 16px; text-align: left;">Parsed Invoice Data</h3>
+                        <div class="excel-table-container">
+                            <table class="excel-table" id="excelTable">
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="noExcelData" class="no-data-message" style="display: none;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                        <h3>No Excel Data Available</h3>
+                        <p style="margin-top: 8px; color: #666;">
+                            Parse some invoices first to view the data here.<br>
+                            Use the Single File or Bulk Upload tabs to get started.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="invoice-tracking-tab" class="tab-content">
+                <div class="feature-card">
+                    <div class="feature-icon">💰</div>
+                    <div class="feature-title">Invoice Tracking Dashboard</div>
+                    <div class="feature-description">
+                        Monitor payment status, track receivables, and manage your cash flow. 
+                        Get insights into overdue invoices, payment pipelines, and client reliability metrics.
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="refresh-btn" onclick="loadInvoiceTrackingData()">🔄 Refresh Dashboard</button>
+                    <button class="download-btn" onclick="exportTrackingReport()">📊 Export Report</button>
+                </div>
+
+                <div class="excel-viewer-container">
+                    <div id="trackingLoading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Loading invoice tracking data...</p>
+                    </div>
+
+                    <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
+
+                    <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
+                        <h3 style="margin-bottom: 16px; text-align: left;">Payment Status Pipeline</h3>
+                        <div class="pipeline-container">
+                            <div class="pipeline-stage sent-stage">
+                                <div class="stage-header" style="background: #667eea; color: white;">
+                                    <h4 style="margin: 0; font-size: 14px;">📨 Sent</h4>
+                                </div>
+                                <div class="stage-content">
+                                    <div id="sentInvoices"></div>
+                                </div>
+                            </div>
+                            <div class="pipeline-stage viewed-stage">
+                                <div class="stage-header" style="background: #17a2b8; color: white;">
+                                    <h4 style="margin: 0; font-size: 14px;">👀 Viewed</h4>
+                                </div>
+                                <div class="stage-content">
+                                    <div id="viewedInvoices"></div>
+                                </div>
+                            </div>
+                            <div class="pipeline-stage due-stage">
+                                <div class="stage-header" style="background: #ffc107; color: black;">
+                                    <h4 style="margin: 0; font-size: 14px;">📅 Due Soon</h4>
+                                </div>
+                                <div class="stage-content">
+                                    <div id="dueInvoices"></div>
+                                </div>
+                            </div>
+                            <div class="pipeline-stage overdue-stage">
+                                <div class="stage-header" style="background: #dc3545; color: white;">
+                                    <h4 style="margin: 0; font-size: 14px;">⚠️ Overdue</h4>
+                                </div>
+                                <div class="stage-content">
+                                    <div id="overdueInvoices"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
+                        <h3 style="margin-bottom: 16px; text-align: left;">Expected Cash Flow</h3>
+                        <div class="excel-table-container">
+                            <table class="excel-table" id="cashFlowTable">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Expected Amount</th>
+                                        <th>Invoices</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cashFlowBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="invoiceList" style="display: none;">
+                        <h3 style="margin-bottom: 16px; text-align: left;">All Invoices</h3>
+                        <div class="excel-table-container">
+                            <table class="excel-table" id="invoiceTrackingTable">
+                                <thead>
+                                    <tr>
+                                        <th>Vendor</th>
+                                        <th>Invoice #</th>
+                                        <th>Date</th>
+                                        <th>Due Date</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Client Reliability</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="invoiceTrackingBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="noTrackingData" class="no-data-message" style="display: none;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">💰</div>
+                        <h3>No Invoice Data Available</h3>
+                        <p style="margin-top: 8px; color: #666;">
+                            Parse some invoices first to track payments and receivables.<br>
+                            Use the Single File or Bulk Upload tabs to get started.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p id="loadingText">Parsing your invoice...</p>
+        </div>
+        
+        <div class="results" id="results">
+            <h2>✅ Parsed Results</h2>
+            <div class="metadata" id="metadata"></div>
+            <div class="line-items" id="lineItems"></div>
+        </div>
+
+        <div class="export-section" id="exportSection" style="display: none;">
+            <h3>📊 Export Data - Excel Format</h3>
+            <p style="color: #666; margin-bottom: 12px;">Download parsed invoices as Excel file with structured data</p>
+            <div class="export-buttons">
+                <button class="download-btn" onclick="downloadXLSX()">📥 Download Excel File</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+const API_URL = 'http://localhost:8000/api';
+let currentToken = '';
+let currentSessionId = '';
+
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const bulkUploadArea = document.getElementById('bulkUploadArea');
+const bulkFileInput = document.getElementById('bulkFileInput');
+const fileList = document.getElementById('fileList');
+const parseBtn = document.getElementById('parseBtn');
+const bulkParseBtn = document.getElementById('bulkParseBtn');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loadingText');
+const results = document.getElementById('results');
+const metadata = document.getElementById('metadata');
+const lineItems = document.getElementById('lineItems');
+const authStatus = document.getElementById('authStatus');
+const exportSection = document.getElementById('exportSection');
+
+const excelLoading = document.getElementById('excelLoading');
+const excelStats = document.getElementById('excelStats');
+const excelData = document.getElementById('excelData');
+const excelTable = document.getElementById('excelTable');
+const noExcelData = document.getElementById('noExcelData');
+
+const trackingLoading = document.getElementById('trackingLoading');
+const collectionsHealth = document.getElementById('collectionsHealth');
+const statusPipeline = document.getElementById('statusPipeline');
+const cashFlowCalendar = document.getElementById('cashFlowCalendar');
+const invoiceList = document.getElementById('invoiceList');
+const noTrackingData = document.getElementById('noTrackingData');
+
+let selectedFiles = [];
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+
+    if (tabName === 'excel-viewer') {
+        loadExcelData();
+    } else if (tabName === 'invoice-tracking') {
+        loadInvoiceTrackingData();
+    }
+}
+
+async function getFreshToken() {
+    try {
+        const response = await fetch(`${API_URL}/auth/demo-login`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const data = await response.json();
+        currentToken = data.access_token;
+        
+        authStatus.textContent = '✅ Authentication successful';
+        authStatus.className = 'status success';
+        authStatus.style.display = 'block';
+        
+        return currentToken;
+    } catch (error) {
+        console.error('❌ Failed to get token:', error);
+        authStatus.textContent = '❌ Authentication failed - please refresh the page';
+        authStatus.className = 'status error';
+        authStatus.style.display = 'block';
+        return null;
+    }
+}
+
+async function initializeApp() {
+    const token = await getFreshToken();
+    if (token) {
+        parseBtn.disabled = false;
+        bulkParseBtn.disabled = false;
+    }
+}
+
+async function loadExcelData() {
+    excelLoading.style.display = 'block';
+    excelStats.style.display = 'none';
+    excelData.style.display = 'none';
+    noExcelData.style.display = 'none';
+
+    try {
+        if (!currentToken) await getFreshToken();
+
+        const response = await fetch(`${API_URL}/invoices/xlsx/data`, {
+            headers: {
+                'Authorization': `Bearer ${currentToken}`
+            }
+        });
+
+        if (response.status === 401) {
+            await getFreshToken();
+            return await loadExcelData();
+        }
+
+        if (response.ok) {
+            const data = await response.json();
+            displayExcelData(data);
+        } else {
+            if (response.status === 404) {
+                excelLoading.style.display = 'none';
+                noExcelData.style.display = 'block';
+            } else {
+                throw new Error('Failed to load Excel data');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading Excel data:', error);
+        excelLoading.style.display = 'none';
+        noExcelData.style.display = 'block';
+    }
+}
+
+function displayExcelData(data) {
+    excelLoading.style.display = 'none';
+    
+    const statsHTML = `
+        <div class="stat-card">
+            <div class="stat-value">${data.row_count}</div>
+            <div class="stat-label">Total Invoices</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${data.columns.length}</div>
+            <div class="stat-label">Data Fields</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${formatFileSize(data.file_size)}</div>
+            <div class="stat-label">File Size</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${new Date(data.last_modified * 1000).toLocaleDateString()}</div>
+            <div class="stat-label">Last Updated</div>
+        </div>
+    `;
+    
+    excelStats.innerHTML = statsHTML;
+    excelStats.style.display = 'grid';
+
+    if (data.rows && data.rows.length > 0) {
+        let tableHTML = '<thead><tr>';
+        data.columns.forEach(column => {
+            tableHTML += `<th>${formatColumnName(column)}</th>`;
+        });
+        tableHTML += '</tr></thead>';
+
+        tableHTML += '<tbody>';
+        data.rows.forEach(row => {
+            tableHTML += '<tr>';
+            data.columns.forEach(column => {
+                const value = row[column] || '';
+                tableHTML += `<td>${formatTableCell(value)}</td>`;
+            });
+            tableHTML += '</tr>';
+        });
+        tableHTML += '</tbody>';
+
+        excelTable.innerHTML = tableHTML;
+        excelData.style.display = 'block';
+    } else {
+        noExcelData.style.display = 'block';
+    }
+}
+
+async function loadInvoiceTrackingData() {
+    trackingLoading.style.display = 'block';
+    collectionsHealth.style.display = 'none';
+    statusPipeline.style.display = 'none';
+    cashFlowCalendar.style.display = 'none';
+    invoiceList.style.display = 'none';
+    noTrackingData.style.display = 'none';
+
+    try {
+        if (!currentToken) await getFreshToken();
+
+        const response = await fetch(`${API_URL}/invoices/tracking/dashboard`, {
+            headers: {
+                'Authorization': `Bearer ${currentToken}`
+            }
+        });
+
+        if (response.status === 401) {
+            await getFreshToken();
+            return await loadInvoiceTrackingData();
+        }
+
+        if (response.ok) {
+            const data = await response.json();
+            displayInvoiceTrackingData(data);
+        } else {
+            trackingLoading.style.display = 'none';
+            noTrackingData.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error loading invoice tracking data:', error);
+        trackingLoading.style.display = 'none';
+        noTrackingData.style.display = 'block';
+    }
+}
+
+function displayInvoiceTrackingData(data) {
+    trackingLoading.style.display = 'none';
+
+    if (!data.invoices || data.invoices.length === 0) {
+        noTrackingData.style.display = 'block';
+        return;
+    }
+
+    const healthColor = data.collections_health === 'healthy' ? '#28a745' : 
+                       data.collections_health === 'warning' ? '#ffc107' : '#dc3545';
+    
+    collectionsHealth.innerHTML = `
+        <div class="stat-card">
+            <div class="stat-value" style="color: ${healthColor};">${data.health_percentage.toFixed(1)}%</div>
+            <div class="stat-label">Collections Health</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">$${data.total_outstanding.toFixed(2)}</div>
+            <div class="stat-label">Total Outstanding</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${data.invoices.length}</div>
+            <div class="stat-label">Total Invoices</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${data.status_counts.overdue}</div>
+            <div class="stat-label">Overdue Invoices</div>
+        </div>
+    `;
+    collectionsHealth.style.display = 'grid';
+
+    displayStatusPipeline(data);
+    statusPipeline.style.display = 'block';
+
+    displayCashFlowCalendar(data);
+    cashFlowCalendar.style.display = 'block';
+
+    displayInvoiceList(data);
+    invoiceList.style.display = 'block';
+}
+
+function displayStatusPipeline(data) {
+    const statusCounts = data.status_counts;
+    
+    document.getElementById('sentInvoices').innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #667eea;">${statusCounts.sent}</div>
+            <div style="font-size: 12px; color: #666;">invoices</div>
+        </div>
+    `;
+    
+    document.getElementById('viewedInvoices').innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${statusCounts.viewed}</div>
+            <div style="font-size: 12px; color: #666;">invoices</div>
+        </div>
+    `;
+    
+    document.getElementById('dueInvoices').innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${statusCounts.due}</div>
+            <div style="font-size: 12px; color: #666;">invoices</div>
+        </div>
+    `;
+    
+    document.getElementById('overdueInvoices').innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 24px; font-weight: bold; color: #dc3545;">${statusCounts.overdue}</div>
+            <div style="font-size: 12px; color: #666;">invoices</div>
+        </div>
+    `;
+}
+
+function displayCashFlowCalendar(data) {
+    const cashFlowBody = document.getElementById('cashFlowBody');
+    
+    if (!data.cash_flow_calendar || data.cash_flow_calendar.length === 0) {
+        cashFlowBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No upcoming payments in the next 30 days</td></tr>';
+        return;
+    }
+
+    let html = '';
+    data.cash_flow_calendar.forEach(day => {
+        const date = new Date(day.date);
+        const isToday = new Date().toDateString() === date.toDateString();
+        const isPast = date < new Date() && !isToday;
+        
+        html += `
+            <tr>
+                <td>${isToday ? 'Today' : date.toLocaleDateString()} ${isPast ? ' (Past)' : ''}</td>
+                <td>$${day.amount.toFixed(2)}</td>
+                <td>${day.invoice_count} invoice(s)</td>
+                <td><span style="color: ${isPast ? '#dc3545' : '#28a745'}">${isPast ? 'Overdue' : 'Upcoming'}</span></td>
+            </tr>
+        `;
+    });
+    
+    cashFlowBody.innerHTML = html;
+}
+
+function displayInvoiceList(data) {
+    const invoiceTrackingBody = document.getElementById('invoiceTrackingBody');
+    
+    let html = '';
+    data.invoices.forEach(invoice => {
+        const statusColors = {
+            'sent': '#667eea',
+            'viewed': '#17a2b8',
+            'due': '#ffc107',
+            'overdue': '#dc3545'
+        };
+        
+        const reliabilityColors = {
+            'high': '#28a745',
+            'medium': '#ffc107',
+            'low': '#dc3545'
+        };
+        
+        html += `
+            <tr>
+                <td>${invoice.vendor}</td>
+                <td>${invoice.invoice_number}</td>
+                <td>${invoice.invoice_date}</td>
+                <td>${invoice.due_date}</td>
+                <td>$${invoice.amount.toFixed(2)}</td>
+                <td>
+                    <span style="color: ${statusColors[invoice.status]}; font-weight: bold;">
+                        ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                    </span>
+                </td>
+                <td>
+                    <span style="color: ${reliabilityColors[invoice.client_reliability]}; font-weight: bold;">
+                        ${invoice.client_reliability.charAt(0).toUpperCase() + invoice.client_reliability.slice(1)}
+                    </span>
+                </td>
+                <td>
+                    <button onclick="updateInvoiceStatus('${invoice.id}', 'viewed')" 
+                            style="padding: 4px 8px; font-size: 12px; margin: 2px;" 
+                            ${invoice.status === 'viewed' ? 'disabled' : ''}>
+                        Mark Viewed
+                    </button>
+                    <button onclick="updateInvoiceStatus('${invoice.id}', 'due')" 
+                            style="padding: 4px 8px; font-size: 12px; margin: 2px;"
+                            ${invoice.status === 'due' ? 'disabled' : ''}>
+                        Mark Due
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    invoiceTrackingBody.innerHTML = html;
+}
+
+async function updateInvoiceStatus(invoiceId, newStatus) {
+    try {
+        const response = await fetch(`${API_URL}/invoices/tracking/update-status`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${currentToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: invoiceId,
+                status: newStatus
+            })
+        });
+
+        if (response.ok) {
+            alert('Invoice status updated successfully!');
+            loadInvoiceTrackingData();
+        } else {
+            alert('Failed to update invoice status');
+        }
+    } catch (error) {
+        console.error('Error updating invoice status:', error);
+        alert('Error updating invoice status');
+    }
+}
+
+function exportTrackingReport() {
+    downloadXLSX();
+}
+
+function formatColumnName(column) {
+    return column.split('_').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+}
+
+function formatTableCell(value) {
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+    
+    if (typeof value === 'number' && (value.toString().includes('.') || value > 1000)) {
+        if (value === 0) return '0.00';
+        return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    }
+    
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}/)) {
+        return new Date(value).toLocaleDateString();
+    }
+    
+    return value.toString();
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+uploadArea.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', handleFileSelect);
+
+function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) {
+        selectedFiles = [file];
+        uploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
+        parseBtn.disabled = !currentToken;
+    }
+}
+
+bulkUploadArea.addEventListener('click', () => bulkFileInput.click());
+bulkFileInput.addEventListener('change', handleBulkFileSelect);
+
+function handleBulkFileSelect(e) {
+    selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length > 0) {
+        bulkUploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${selectedFiles.length} files selected</strong></p>`;
+        fileList.style.display = 'block';
+        fileList.innerHTML = selectedFiles.map(file => 
+            `<div class="file-item">${file.name}</div>`
+        ).join('');
+        bulkParseBtn.disabled = !currentToken;
+    }
+}
+
+setupDragAndDrop(uploadArea, fileInput);
+setupDragAndDrop(bulkUploadArea, bulkFileInput);
+
+function setupDragAndDrop(area, input) {
+    area.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        area.classList.add('dragover');
+    });
+    
+    area.addEventListener('dragleave', () => {
+        area.classList.remove('dragover');
+    });
+    
+    area.addEventListener('drop', (e) => {
+        e.preventDefault();
+        area.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            if (input.multiple) {
+                selectedFiles = Array.from(files).filter(f => f.type === 'application/pdf');
+                if (selectedFiles.length > 0) {
+                    bulkUploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${selectedFiles.length} files selected</strong></p>`;
+                    fileList.style.display = 'block';
+                    fileList.innerHTML = selectedFiles.map(file => 
+                        `<div class="file-item">${file.name}</div>`
+                    ).join('');
+                    bulkParseBtn.disabled = !currentToken;
+                }
+            } else {
+                const file = files[0];
+                if (file.type === 'application/pdf') {
+                    selectedFiles = [file];
+                    uploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
+                    parseBtn.disabled = !currentToken;
+                }
+            }
+        }
+    });
+}
+
+parseBtn.addEventListener('click', () => parseFiles([selectedFiles[0]], false));
+bulkParseBtn.addEventListener('click', () => parseFiles(selectedFiles, true));
+
+async function parseFiles(files, isBulk) {
+    if (!files || files.length === 0) return;
+    
+    loadingText.textContent = isBulk ? `Parsing ${files.length} invoices...` : 'Parsing your invoice...';
+    loading.classList.add('show');
+    results.classList.remove('show');
+    exportSection.style.display = 'none';
+    parseBtn.disabled = true;
+    bulkParseBtn.disabled = true;
+    
+    try {
+        if (!currentToken) await getFreshToken();
+        
+        if (isBulk && files.length > 1) {
+            await parseBulkInvoices(files);
+        } else {
+            await parseSingleInvoice(files[0]);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        loading.classList.remove('show');
+        parseBtn.disabled = !currentToken;
+        bulkParseBtn.disabled = !currentToken;
+    }
+}
+
+async function parseSingleInvoice(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}/invoices/parse`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${currentToken}`
+        },
+        body: formData
+    });
+    
+    if (response.status === 401) {
+        await getFreshToken();
+        return await parseSingleInvoice(file);
+    }
+    
+    const data = await response.json();
+    handleResponse(data, response.ok, file.name);
+}
+
+async function parseBulkInvoices(files) {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+
+    const response = await fetch(`${API_URL}/invoices/bulk`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${currentToken}`
+        },
+        body: formData
+    });
+    
+    if (response.status === 401) {
+        await getFreshToken();
+        return await parseBulkInvoices(files);
+    }
+    
+    const data = await response.json();
+    handleBulkResponse(data, response.ok);
+}
+
+function handleResponse(data, isOk, filename) {
+    if (isOk) {
+        displayResults(data, filename);
+        exportSection.style.display = 'block';
+        currentSessionId = data.export_result?.session_id || currentSessionId;
+    } else {
+        alert('Failed to parse invoice: ' + (data.detail || data.error || 'Unknown error'));
+    }
+}
+
+function handleBulkResponse(data, isOk) {
+    if (isOk) {
+        displayBulkResults(data);
+        exportSection.style.display = 'block';
+    } else {
+        alert('Bulk parsing failed: ' + (data.detail || data.error || 'Unknown error'));
+    }
+}
+
+function displayResults(data, filename) {
+    const parsedData = data.parsed_data || {};
+    
+    const fieldsToDisplay = [
+        'vendor', 'invoice_number', 'invoice_date', 
+        'subtotal', 'discount_amount', 'discount_percentage', 
+        'shipping_amount', 'tax_amount', 'total_amount', 'currency'
+    ];
+    
+    const fieldLabels = {
+        'vendor': 'VENDOR', 'invoice_number': 'INVOICE NUMBER', 
+        'invoice_date': 'INVOICE DATE', 'subtotal': 'SUBTOTAL',
+        'discount_amount': 'DISCOUNT', 'discount_percentage': 'DISCOUNT %',
+        'shipping_amount': 'SHIPPING', 'tax_amount': 'TAX',
+        'total_amount': 'TOTAL AMOUNT', 'currency': 'CURRENCY'
+    };
+    
+    const metadataHTML = fieldsToDisplay
+        .filter(field => parsedData[field] && parsedData[field] !== 'N/A' && !parsedData[field].toString().includes('Unknown'))
+        .map(field => `
+            <div class="metadata-item">
+                <div class="label">${fieldLabels[field] || field.replace('_', ' ').toUpperCase()}</div>
+                <div class="value">${formatFieldValue(field, parsedData[field])}</div>
+            </div>
+        `).join('');
+    
+    metadata.innerHTML = metadataHTML || '<p>No metadata found</p>';
+    
+    if (parsedData.line_items && parsedData.line_items.length > 0) {
+        const headers = Object.keys(parsedData.line_items[0]);
+        const tableHTML = `
+            <h3 style="margin-bottom: 12px;">Line Items</h3>
+            <table>
+                <thead>
+                    <tr>${headers.map(h => `<th>${h.toUpperCase().replace('_', ' ')}</th>`).join('')}</tr>
+                </thead>
+                <tbody>
+                    ${parsedData.line_items.map(item => `
+                        <tr>${headers.map(h => `<td>${formatTableValue(h, item[h])}</td>`).join('')}</tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        lineItems.innerHTML = tableHTML;
+    } else {
+        lineItems.innerHTML = '<p style="color: #999;">No line items found</p>';
+    }
+    
+    results.classList.add('show');
+}
+
+function displayBulkResults(data) {
+    const successful = data.files_successful || 0;
+    const total = data.files_processed || 0;
+    
+    metadata.innerHTML = `
+        <div class="metadata-item">
+            <div class="label">FILES PROCESSED</div>
+            <div class="value">${total}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">SUCCESSFUL PARSES</div>
+            <div class="value">${successful}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">FAILED PARSES</div>
+            <div class="value">${total - successful}</div>
+        </div>
+    `;
+    
+    if (data.detailed_results) {
+        let lineItemsHTML = '<h3 style="margin-bottom: 12px;">File Results</h3><table><thead><tr><th>Filename</th><th>Status</th><th>Details</th></tr></thead><tbody>';
+        
+        data.detailed_results.forEach(result => {
+            lineItemsHTML += `
+                <tr>
+                    <td>${result.filename}</td>
+                    <td>${result.success ? '✅ Success' : '❌ Failed'}</td>
+                    <td>${result.error || 'Parsed successfully'}</td>
+                </tr>
+            `;
+        });
+        
+        lineItemsHTML += '</tbody></table>';
+        lineItems.innerHTML = lineItemsHTML;
+    }
+    
+    results.classList.add('show');
+}
+
+function formatFieldValue(field, value) {
+    if (field.includes('amount') || field.includes('price') || field === 'subtotal' || field === 'discount' || field === 'shipping' || field === 'tax') {
+        return typeof value === 'number' ? `$${value.toFixed(2)}` : value;
+    }
+    if (field === 'discount_percentage' && value) {
+        return `${value}%`;
+    }
+    return value;
+}
+
+function formatTableValue(header, value) {
+    if (header.includes('amount') || header.includes('price')) {
+        return typeof value === 'number' ? `$${value.toFixed(2)}` : value;
+    }
+    return value;
+}
+
+async function downloadXLSX() {
+    try {
+        const response = await fetch(`${API_URL}/export/download-xlsx`);
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            
+            if (blob.size === 0) {
+                alert('❌ Downloaded file is empty. Please try again.');
+                return;
+            }
+            
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'parsed_invoices.xlsx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            alert('✅ Excel file downloaded successfully!');
+            
+            if (document.getElementById('excel-viewer-tab').classList.contains('active')) {
+                loadExcelData();
+            }
+        } else {
+            const errorText = await response.text();
+            alert('❌ Download failed: ' + (errorText || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Download error:', error);
+        alert('❌ Download failed: ' + error.message);
+    }
+}
+
+initializeApp();
+</script>
+</body>
+</html>
