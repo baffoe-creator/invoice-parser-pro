@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> c44b9578f9cba2d06a8afc4477b423c28de16e1d
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pdfplumber==0.10.3
