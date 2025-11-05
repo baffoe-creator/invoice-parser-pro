@@ -5,7 +5,7 @@ from src.infrastructure.repositories.sqlalchemy_repo import SQLAlchemyInvoiceRep
 from src.infrastructure.file_handlers.secure_file_handler import SecureFileHandler
 from src.application.use_cases.parse_invoice import ParseInvoiceUseCase
 from src.application.services.auth_service import AuthService
-from xlsx_exporter import XLSXExporter
+from src.xlsx_exporter import XLSXExporter
 import os
 
 security = HTTPBearer()

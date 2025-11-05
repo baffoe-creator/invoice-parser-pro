@@ -16,3 +16,8 @@ redis==5.0.1
 structlog==23.2.0
 sentry-sdk==1.40.0
 numpy==1.26.4
+pymupdf==1.26.4
+pytesseract==0.3.13
+PyPDF2==3.0.1
+pypdfium2==4.30.0
+openpyxl==3.1.5

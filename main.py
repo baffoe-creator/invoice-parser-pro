@@ -10,8 +10,8 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from api.endpoints import invoices
-from api.dependencies import get_auth_service, get_xlsx_exporter
+from src.api.endpoints import invoices
+from src.api.dependencies import get_auth_service, get_xlsx_exporter
 from infrastructure.repositories.sqlalchemy_repo import SQLAlchemyInvoiceRepository
 from xlsx_exporter import XLSXExporter
 import pandas as pd
