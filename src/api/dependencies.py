@@ -1,43 +1,50 @@
+import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from src.infrastructure.parsers.pdfplumber_parser import PdfPlumberParser
+from src.infrastructure.repositories.supabase_repository import (
+    SupabaseInvoiceRepository,
+)
 from src.infrastructure.repositories.sqlalchemy_repo import SQLAlchemyInvoiceRepository
 from src.infrastructure.file_handlers.secure_file_handler import SecureFileHandler
 from src.application.use_cases.parse_invoice import ParseInvoiceUseCase
 from src.application.services.auth_service import AuthService
 from src.xlsx_exporter import XLSXExporter
-import os
 
 security = HTTPBearer()
 
 
-def get_parser() -> PdfPlumberParser:
+def get_repository():
+    if os.getenv("VERCEL") or os.getenv("SUPABASE_URL"):
+        database_url = os.getenv("DATABASE_URL")
+        return SupabaseInvoiceRepository(database_url)
+    else:
+        database_url = os.getenv("LOCAL_DATABASE_URL", "sqlite:///./invoices.db")
+        return SQLAlchemyInvoiceRepository(database_url)
+
+
+def get_parser():
     return PdfPlumberParser()
 
 
-def get_repository() -> SQLAlchemyInvoiceRepository:
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./invoices.db")
-    return SQLAlchemyInvoiceRepository(database_url)
-
-
-def get_file_handler() -> SecureFileHandler:
+def get_file_handler():
     max_file_size = int(os.getenv("MAX_FILE_SIZE", "5000000"))
     return SecureFileHandler(max_file_size=max_file_size)
 
 
-def get_xlsx_exporter() -> XLSXExporter:
+def get_xlsx_exporter():
     return XLSXExporter()
 
 
 def get_use_case(
     parser: PdfPlumberParser = Depends(get_parser),
-    repo: SQLAlchemyInvoiceRepository = Depends(get_repository),
+    repo=Depends(get_repository),
     file_handler: SecureFileHandler = Depends(get_file_handler),
-) -> ParseInvoiceUseCase:
+):
     return ParseInvoiceUseCase(parser, repo, file_handler)
 
 
-def get_auth_service() -> AuthService:
+def get_auth_service():
     secret_key = os.getenv("JWT_SECRET")
     if not secret_key or secret_key == "your-super-secret-key-change-in-production":
         raise Exception(
@@ -50,7 +57,7 @@ def get_auth_service() -> AuthService:
 def authenticate_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     auth_service: AuthService = Depends(get_auth_service),
-) -> dict:
+):
     payload = auth_service.verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(

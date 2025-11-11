@@ -11,8 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from src.api.endpoints import invoices
-from src.api.dependencies import get_auth_service, get_xlsx_exporter
-from infrastructure.repositories.sqlalchemy_repo import SQLAlchemyInvoiceRepository
+from src.api.dependencies import get_auth_service, get_xlsx_exporter, get_repository
 from xlsx_exporter import XLSXExporter
 import pandas as pd
 import glob
@@ -86,14 +85,14 @@ async def export_xlsx(xlsx_exporter: XLSXExporter = Depends(get_xlsx_exporter)):
 @app.get("/api/export/download-xlsx")
 async def download_xlsx():
     try:
-        data_dir = "data"
+        IS_VERCEL = os.getenv("VERCEL") == "1"
+        data_dir = "/tmp/data" if IS_VERCEL else "data"
         print(f"🔍 Looking for Excel files in: {os.path.abspath(data_dir)}")
 
         if not os.path.exists(data_dir):
             print("❌ Data directory not found")
             raise HTTPException(status_code=404, detail="Data directory not found")
 
-        # Find all Excel files with the pattern used by the application
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         xlsx_files = [os.path.basename(f) for f in xlsx_files]
 
@@ -103,7 +102,6 @@ async def download_xlsx():
             print("❌ No Excel files found")
             raise HTTPException(status_code=404, detail="No Excel files found")
 
-        # Get the latest file by creation time
         latest_file = max(
             xlsx_files, key=lambda f: os.path.getctime(os.path.join(data_dir, f))
         )
@@ -111,7 +109,6 @@ async def download_xlsx():
         file_path = os.path.join(data_dir, latest_file)
         print(f"📄 Using latest file: {file_path}")
 
-        # Extract session ID from filename
         if "session_" in latest_file:
             session_id = latest_file.split("session_")[1].replace(".xlsx", "")
         else:
@@ -147,7 +144,8 @@ async def download_xlsx():
 @app.get("/api/invoices/xlsx/stats")
 async def get_xlsx_stats():
     try:
-        data_dir = "data"
+        IS_VERCEL = os.getenv("VERCEL") == "1"
+        data_dir = "/tmp/data" if IS_VERCEL else "data"
         if not os.path.exists(data_dir):
             return {
                 "exists": False,
@@ -159,7 +157,6 @@ async def get_xlsx_stats():
                 "file_size": 0,
             }
 
-        # Find all Excel files with the pattern used by the application
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         xlsx_files = [os.path.basename(f) for f in xlsx_files]
 
@@ -174,20 +171,17 @@ async def get_xlsx_stats():
                 "file_size": 0,
             }
 
-        # Get the latest file by creation time
         latest_file = max(
             xlsx_files, key=lambda f: os.path.getctime(os.path.join(data_dir, f))
         )
 
         file_path = os.path.join(data_dir, latest_file)
 
-        # Extract session ID from filename
         if "session_" in latest_file:
             session_id = latest_file.split("session_")[1].replace(".xlsx", "")
         else:
             session_id = "default"
 
-        # Read the Excel file
         df = pd.read_excel(file_path)
 
         total_amount = df["total_amount"].sum() if "total_amount" in df.columns else 0
@@ -218,11 +212,9 @@ async def get_xlsx_stats():
 
 @app.get("/api/invoices/xlsx/data")
 async def get_xlsx_data():
-    """
-    New endpoint to fetch Excel data for the Excel Viewer tab
-    """
     try:
-        data_dir = "data"
+        IS_VERCEL = os.getenv("VERCEL") == "1"
+        data_dir = "/tmp/data" if IS_VERCEL else "data"
         print(
             f"🔍 [Excel Data Endpoint] Looking for Excel files in: {os.path.abspath(data_dir)}"
         )
@@ -231,7 +223,6 @@ async def get_xlsx_data():
             print("❌ [Excel Data Endpoint] Data directory not found")
             raise HTTPException(status_code=404, detail="Data directory not found")
 
-        # Find all Excel files with the pattern used by the application
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         xlsx_files = [os.path.basename(f) for f in xlsx_files]
 
@@ -241,7 +232,6 @@ async def get_xlsx_data():
             print("❌ [Excel Data Endpoint] No Excel files found")
             raise HTTPException(status_code=404, detail="No Excel files found")
 
-        # Get the latest file by creation time
         latest_file = max(
             xlsx_files, key=lambda f: os.path.getctime(os.path.join(data_dir, f))
         )
@@ -249,7 +239,6 @@ async def get_xlsx_data():
         file_path = os.path.join(data_dir, latest_file)
         print(f"📄 [Excel Data Endpoint] Using latest file: {file_path}")
 
-        # Check if file is readable and not empty
         if not os.access(file_path, os.R_OK):
             print("❌ [Excel Data Endpoint] File is not readable")
             raise HTTPException(status_code=403, detail="XLSX file is not readable")
@@ -261,7 +250,6 @@ async def get_xlsx_data():
             print("❌ [Excel Data Endpoint] File is empty")
             raise HTTPException(status_code=500, detail="XLSX file is empty")
 
-        # Read the Excel file
         print("📖 [Excel Data Endpoint] Reading Excel file...")
         df = pd.read_excel(file_path)
         print(
@@ -269,7 +257,6 @@ async def get_xlsx_data():
         )
         print(f"📋 [Excel Data Endpoint] Columns: {df.columns.tolist()}")
 
-        # Convert DataFrame to dictionary for JSON response
         data = {
             "filename": latest_file,
             "columns": df.columns.tolist(),
@@ -294,9 +281,6 @@ async def get_xlsx_data():
 
 
 def clean_data_for_json(data):
-    """
-    Recursively clean data to remove NaN and other non-JSON-serializable values
-    """
     if isinstance(data, dict):
         return {k: clean_data_for_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -311,11 +295,9 @@ def clean_data_for_json(data):
 
 @app.get("/api/invoices/tracking/dashboard")
 async def get_invoice_tracking_dashboard():
-    """
-    Get data for the invoice tracking dashboard
-    """
     try:
-        data_dir = "data"
+        IS_VERCEL = os.getenv("VERCEL") == "1"
+        data_dir = "/tmp/data" if IS_VERCEL else "data"
         print(
             f"🔍 [Invoice Tracking] Looking for Excel files in: {os.path.abspath(data_dir)}"
         )
@@ -333,7 +315,6 @@ async def get_invoice_tracking_dashboard():
                 }
             )
 
-        # Find the latest Excel file
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         print(f"📁 [Invoice Tracking] Found Excel files: {xlsx_files}")
 
@@ -353,18 +334,15 @@ async def get_invoice_tracking_dashboard():
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         print(f"📄 [Invoice Tracking] Using latest file: {latest_file}")
 
-        # Read the Excel file and handle NaN values
         df = pd.read_excel(latest_file)
-        df = df.fillna("")  # Replace NaN with empty strings
+        df = df.fillna("")
 
         print(f"✅ [Invoice Tracking] Successfully read Excel file with {len(df)} rows")
 
-        # Transform parsed invoices into receivable tracking data
         invoices = []
         total_outstanding = 0
 
         for index, row in df.iterrows():
-            # Calculate due date (30 days from invoice date if available)
             invoice_date = row.get("invoice_date")
             due_date = None
 
@@ -380,7 +358,6 @@ async def get_invoice_tracking_dashboard():
                 if invoice_date and isinstance(invoice_date, datetime):
                     due_date = invoice_date + timedelta(days=30)
 
-            # Determine status based on due date and current date
             status = "sent"
             if due_date:
                 today = datetime.now().date()
@@ -395,13 +372,11 @@ async def get_invoice_tracking_dashboard():
                 else:
                     status = "sent"
 
-            # Simulate some invoices as viewed
             vendor_str = str(row.get("vendor", ""))
             invoice_num_str = str(row.get("invoice_number", ""))
-            if hash(vendor_str + invoice_num_str) % 3 == 0:  # Random selection for demo
+            if hash(vendor_str + invoice_num_str) % 3 == 0:
                 status = "viewed"
 
-            # Handle amount - ensure it's a valid float
             amount = row.get("total_amount", 0)
             if amount == "" or pd.isna(amount):
                 amount = 0.0
@@ -435,7 +410,6 @@ async def get_invoice_tracking_dashboard():
             if status in ["sent", "viewed", "due"]:
                 total_outstanding += invoice_data["amount"]
 
-        # Calculate status counts
         status_counts = {
             "sent": len([i for i in invoices if i["status"] == "sent"]),
             "viewed": len([i for i in invoices if i["status"] == "viewed"]),
@@ -445,7 +419,6 @@ async def get_invoice_tracking_dashboard():
 
         print(f"📊 [Invoice Tracking] Status counts: {status_counts}")
 
-        # Calculate collections health
         overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
         health_percentage = (
             ((total_outstanding - overdue_amount) / total_outstanding * 100)
@@ -462,9 +435,8 @@ async def get_invoice_tracking_dashboard():
             f"🏥 [Invoice Tracking] Collections health: {collections_health} ({health_percentage:.1f}%)"
         )
 
-        # Generate cash flow calendar
         cash_flow_calendar = []
-        for i in range(30):  # Next 30 days
+        for i in range(30):
             date = datetime.now().date() + timedelta(days=i)
             day_amount = 0
             day_invoice_count = 0
@@ -529,9 +501,6 @@ async def get_invoice_tracking_dashboard():
 
 @app.post("/api/invoices/tracking/update-status")
 async def update_invoice_status(invoice_data: Dict[str, Any]):
-    """
-    Update invoice status (for demo purposes - in production, you'd save to database)
-    """
     try:
         invoice_id = invoice_data.get("id")
         new_status = invoice_data.get("status")
@@ -540,8 +509,6 @@ async def update_invoice_status(invoice_data: Dict[str, Any]):
             f"🔄 [Invoice Tracking] Updating invoice {invoice_id} to status: {new_status}"
         )
 
-        # In a real application, you'd update this in a database
-        # For now, we'll just return success
         return {
             "success": True,
             "message": f"Invoice status updated to {new_status}",
@@ -556,9 +523,6 @@ async def update_invoice_status(invoice_data: Dict[str, Any]):
 
 @app.get("/api/invoices/tracking/health-metrics")
 async def get_collections_health_metrics():
-    """
-    Get detailed collections health metrics
-    """
     try:
         print("📈 [Invoice Tracking] Getting health metrics")
         dashboard_data = await get_invoice_tracking_dashboard()
@@ -647,10 +611,8 @@ async def debug_routes():
 
 @app.get("/api/debug/files")
 async def debug_files():
-    """
-    Debug endpoint to check what files exist in the data directory
-    """
-    data_dir = "data"
+    IS_VERCEL = os.getenv("VERCEL") == "1"
+    data_dir = "/tmp/data" if IS_VERCEL else "data"
     if not os.path.exists(data_dir):
         return {"error": "Data directory not found", "files": []}
 
@@ -679,10 +641,11 @@ async def debug_files():
 if __name__ == "__main__":
     import uvicorn
 
-    os.makedirs("data", exist_ok=True)
+    IS_VERCEL = os.getenv("VERCEL") == "1"
+    data_dir = "/tmp/data" if IS_VERCEL else "data"
+    os.makedirs(data_dir, exist_ok=True)
 
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./invoices.db")
-    repo = SQLAlchemyInvoiceRepository(database_url)
+    repo = get_repository()
     print("✅ Database initialized successfully")
     print("✅ All endpoints registered")
 

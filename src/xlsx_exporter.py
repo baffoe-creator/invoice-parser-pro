@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 
 class XLSXExporter:
     def __init__(self, session_id: str = None):
+        IS_VERCEL = os.getenv("VERCEL") == "1"
+        self.data_dir = "/tmp/data" if IS_VERCEL else "data"
+
         self.session_id = session_id or f"session_{uuid.uuid4().hex[:8]}"
-        self.xlsx_file_path = f"data/parsed_invoices_{self.session_id}.xlsx"
+        self.xlsx_file_path = f"{self.data_dir}/parsed_invoices_{self.session_id}.xlsx"
         self._ensure_data_directory()
         self.expected_columns = [
             "file_name",
@@ -33,7 +36,12 @@ class XLSXExporter:
         ]
 
     def _ensure_data_directory(self):
-        os.makedirs(os.path.dirname(self.xlsx_file_path), exist_ok=True)
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Could not create directory {self.data_dir}: {e}")
+            if os.getenv("VERCEL"):
+                raise
 
     def _create_new_workbook(self):
         wb = Workbook()
@@ -270,7 +278,9 @@ class XLSXExporter:
             new_session_id = f"session_{uuid.uuid4().hex[:8]}"
             old_path = self.xlsx_file_path
             self.session_id = new_session_id
-            self.xlsx_file_path = f"data/parsed_invoices_{new_session_id}.xlsx"
+            self.xlsx_file_path = (
+                f"{self.data_dir}/parsed_invoices_{new_session_id}.xlsx"
+            )
 
             wb = self._create_new_workbook()
             wb.save(self.xlsx_file_path)
@@ -288,16 +298,15 @@ class XLSXExporter:
 
     def get_all_sessions(self) -> List[Dict[str, Any]]:
         sessions = []
-        data_dir = "data"
-        if os.path.exists(data_dir):
-            for file in os.listdir(data_dir):
+        if os.path.exists(self.data_dir):
+            for file in os.listdir(self.data_dir):
                 if file.startswith("parsed_invoices_session_") and file.endswith(
                     ".xlsx"
                 ):
                     session_id = file.replace("parsed_invoices_", "").replace(
                         ".xlsx", ""
                     )
-                    file_path = os.path.join(data_dir, file)
+                    file_path = os.path.join(self.data_dir, file)
                     try:
                         df = pd.read_excel(file_path, sheet_name="Invoice Data")
                         sessions.append(
