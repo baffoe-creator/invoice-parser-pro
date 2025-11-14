@@ -1,11 +1,18 @@
 import os
-import pandas as pd
 from typing import Dict, Any, List
 from datetime import datetime
 import uuid
 import logging
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+
+try:
+    import pandas as pd
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+    print("⚠️ openpyxl not available - Excel export will be limited")
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +51,9 @@ class XLSXExporter:
                 raise
 
     def _create_new_workbook(self):
+        if not OPENPYXL_AVAILABLE:
+            raise ImportError("openpyxl is required but not available")
+
         wb = Workbook()
 
         ws_main = wb.active
@@ -118,6 +128,13 @@ class XLSXExporter:
     def append_normalized_data(
         self, normalized_data: Dict[str, Any], filename: str
     ) -> Dict[str, Any]:
+        if not OPENPYXL_AVAILABLE:
+            return {
+                "success": False,
+                "error": "openpyxl not available - cannot export to Excel",
+                "filename": filename,
+            }
+
         try:
             logger.info(f"Appending normalized data to XLSX for: {filename}")
 
@@ -242,6 +259,9 @@ class XLSXExporter:
             }
 
     def get_file_data(self) -> bytes:
+        if not OPENPYXL_AVAILABLE:
+            raise ImportError("openpyxl not available - cannot read Excel files")
+
         try:
             with open(self.xlsx_file_path, "rb") as f:
                 return f.read()
@@ -250,6 +270,14 @@ class XLSXExporter:
             raise
 
     def get_file_stats(self) -> Dict[str, Any]:
+        if not OPENPYXL_AVAILABLE:
+            return {
+                "exists": False,
+                "error": "openpyxl not available",
+                "row_count": 0,
+                "session_id": self.session_id,
+            }
+
         if not os.path.exists(self.xlsx_file_path):
             return {"exists": False, "row_count": 0, "session_id": self.session_id}
 
@@ -274,6 +302,12 @@ class XLSXExporter:
             return {"exists": False, "error": str(e), "session_id": self.session_id}
 
     def create_new_file(self) -> Dict[str, Any]:
+        if not OPENPYXL_AVAILABLE:
+            return {
+                "success": False,
+                "error": "openpyxl not available - cannot create Excel files",
+            }
+
         try:
             new_session_id = f"session_{uuid.uuid4().hex[:8]}"
             old_path = self.xlsx_file_path
@@ -297,6 +331,9 @@ class XLSXExporter:
             return {"success": False, "error": f"Failed to create new XLSX: {str(e)}"}
 
     def get_all_sessions(self) -> List[Dict[str, Any]]:
+        if not OPENPYXL_AVAILABLE:
+            return []
+
         sessions = []
         if os.path.exists(self.data_dir):
             for file in os.listdir(self.data_dir):
