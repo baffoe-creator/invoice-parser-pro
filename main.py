@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import math
 
-# Graceful imports with availability flags
 try:
     import pandas as pd
 
@@ -79,7 +78,6 @@ class XLSXExporter:
         try:
             if not os.path.exists(self.xlsx_file_path):
                 return {"exists": False, "message": "File not found"}
-
             file_size = os.path.getsize(self.xlsx_file_path)
             return {
                 "exists": True,
@@ -93,7 +91,6 @@ class XLSXExporter:
         try:
             if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
                 return {"error": "pandas or openpyxl not available"}
-
             df = pd.DataFrame(
                 columns=[
                     "vendor",
@@ -133,21 +130,16 @@ def initialize_app():
     global _initialized
     if _initialized:
         return
-
     print("Starting Invoice Parser Pro API...")
-
     try:
         IS_VERCEL = os.getenv("VERCEL") == "1"
         data_dir = "/tmp/data" if IS_VERCEL else "data"
         os.makedirs(data_dir, exist_ok=True)
         print(f"Data directory: {data_dir}")
-
         if IS_VERCEL or os.getenv("SUPABASE_URL"):
             test_supabase_connection()
-
         _initialized = True
         print("Application initialized successfully")
-
     except Exception as e:
         print(f"Initialization error: {e}")
         import traceback
@@ -159,31 +151,25 @@ def test_supabase_connection():
     if not PSYCOPG2_AVAILABLE:
         print("psycopg2 not available, skipping database connection")
         return None
-
     try:
         USER = os.getenv("user")
         PASSWORD = os.getenv("password")
         HOST = os.getenv("host")
         PORT = os.getenv("port")
         DBNAME = os.getenv("dbname")
-
         if not all([USER, PASSWORD, HOST, PORT, DBNAME]):
             print("Supabase credentials not found")
             return False
-
         connection = psycopg2.connect(
             user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
         )
-
         cursor = connection.cursor()
         cursor.execute("SELECT NOW();")
         result = cursor.fetchone()
         print(f"Supabase connected: {result}")
-
         cursor.close()
         connection.close()
         return True
-
     except Exception as e:
         print(f"Supabase connection failed: {e}")
         return False
@@ -239,7 +225,6 @@ async def demo_login():
         return {"access_token": "demo_token_12345", "token_type": "bearer"}
 
 
-# Try to load invoice routes
 try:
     from src.api.endpoints import invoices
 
@@ -256,14 +241,10 @@ async def export_xlsx():
             raise HTTPException(
                 status_code=503, detail="Excel export not available - openpyxl missing"
             )
-
         xlsx_exporter = get_xlsx_exporter()
-
         if not os.path.exists(xlsx_exporter.xlsx_file_path):
             raise HTTPException(status_code=404, detail="No parsed invoices found")
-
         stats = xlsx_exporter.get_file_stats()
-
         return {
             "file_path": xlsx_exporter.xlsx_file_path,
             "filename": f"parsed_invoices_{xlsx_exporter.session_id}.xlsx",
@@ -281,17 +262,12 @@ async def download_xlsx():
     try:
         IS_VERCEL = os.getenv("VERCEL") == "1"
         data_dir = "/tmp/data" if IS_VERCEL else "data"
-
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
-
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
-
         if not xlsx_files:
             raise HTTPException(status_code=404, detail="No Excel files found")
-
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
-
         return FileResponse(
             path=latest_file,
             filename=os.path.basename(latest_file),
@@ -313,10 +289,8 @@ async def get_xlsx_stats():
                 "row_count": 0,
                 "total_amount": 0,
             }
-
         IS_VERCEL = os.getenv("VERCEL") == "1"
         data_dir = "/tmp/data" if IS_VERCEL else "data"
-
         if not os.path.exists(data_dir):
             return {
                 "exists": False,
@@ -325,9 +299,7 @@ async def get_xlsx_stats():
                 "total_amount": 0,
                 "file_size": 0,
             }
-
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
-
         if not xlsx_files:
             return {
                 "exists": False,
@@ -336,10 +308,8 @@ async def get_xlsx_stats():
                 "total_amount": 0,
                 "file_size": 0,
             }
-
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
-
         return {
             "exists": True,
             "filename": os.path.basename(latest_file),
@@ -349,7 +319,6 @@ async def get_xlsx_stats():
             ),
             "file_size": os.path.getsize(latest_file),
         }
-
     except Exception as e:
         return {
             "exists": False,
@@ -365,28 +334,21 @@ async def get_xlsx_data():
     try:
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
-
         IS_VERCEL = os.getenv("VERCEL") == "1"
         data_dir = "/tmp/data" if IS_VERCEL else "data"
-
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
-
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
-
         if not xlsx_files:
             raise HTTPException(status_code=404, detail="No Excel files found")
-
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
-
         return {
             "filename": os.path.basename(latest_file),
             "columns": df.columns.tolist(),
             "rows": df.fillna("").to_dict("records"),
             "row_count": len(df),
         }
-
     except HTTPException:
         raise
     except Exception as e:
@@ -394,7 +356,6 @@ async def get_xlsx_data():
 
 
 def clean_data_for_json(data):
-    """Clean data for JSON serialization"""
     if isinstance(data, dict):
         return {k: clean_data_for_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -422,10 +383,8 @@ async def get_invoice_tracking_dashboard():
                     "error": "pandas not available",
                 }
             )
-
         IS_VERCEL = os.getenv("VERCEL") == "1"
         data_dir = "/tmp/data" if IS_VERCEL else "data"
-
         if not os.path.exists(data_dir):
             return clean_data_for_json(
                 {
@@ -437,9 +396,7 @@ async def get_invoice_tracking_dashboard():
                     "health_percentage": 100,
                 }
             )
-
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
-
         if not xlsx_files:
             return clean_data_for_json(
                 {
@@ -451,18 +408,14 @@ async def get_invoice_tracking_dashboard():
                     "health_percentage": 100,
                 }
             )
-
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
         df = df.fillna("")
-
         invoices = []
         total_outstanding = 0
-
         for index, row in df.iterrows():
             invoice_date = row.get("invoice_date")
             due_date = None
-
             if invoice_date and invoice_date != "":
                 if isinstance(invoice_date, str):
                     try:
@@ -471,29 +424,24 @@ async def get_invoice_tracking_dashboard():
                         invoice_date = None
                 elif pd.isna(invoice_date):
                     invoice_date = None
-
                 if invoice_date and isinstance(invoice_date, datetime):
                     due_date = invoice_date + timedelta(days=30)
-
             status = "sent"
             if due_date:
                 today = datetime.now().date()
                 due_date_date = (
                     due_date.date() if hasattr(due_date, "date") else due_date
                 )
-
                 if due_date_date < today:
                     status = "overdue"
                 elif (due_date_date - today).days <= 7:
                     status = "due"
                 else:
                     status = "sent"
-
             vendor_str = str(row.get("vendor", ""))
             invoice_num_str = str(row.get("invoice_number", ""))
             if hash(vendor_str + invoice_num_str) % 3 == 0:
                 status = "viewed"
-
             amount = row.get("total_amount", 0)
             if amount == "" or pd.isna(amount):
                 amount = 0.0
@@ -502,7 +450,6 @@ async def get_invoice_tracking_dashboard():
                     amount = float(amount)
                 except (ValueError, TypeError):
                     amount = 0.0
-
             invoice_data = {
                 "id": f"inv_{index}_{hash(vendor_str + invoice_num_str)}",
                 "vendor": vendor_str if vendor_str != "" else "Unknown Vendor",
@@ -522,18 +469,15 @@ async def get_invoice_tracking_dashboard():
                 "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
                 "days_until_due": (due_date_date - today).days if due_date else None,
             }
-
             invoices.append(invoice_data)
             if status in ["sent", "viewed", "due"]:
                 total_outstanding += invoice_data["amount"]
-
         status_counts = {
             "sent": len([i for i in invoices if i["status"] == "sent"]),
             "viewed": len([i for i in invoices if i["status"] == "viewed"]),
             "due": len([i for i in invoices if i["status"] == "due"]),
             "overdue": len([i for i in invoices if i["status"] == "overdue"]),
         }
-
         overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
         health_percentage = (
             ((total_outstanding - overdue_amount) / total_outstanding * 100)
@@ -545,13 +489,11 @@ async def get_invoice_tracking_dashboard():
             if health_percentage >= 80
             else "warning" if health_percentage >= 60 else "critical"
         )
-
         cash_flow_calendar = []
         for i in range(30):
             date = datetime.now().date() + timedelta(days=i)
             day_amount = 0
             day_invoice_count = 0
-
             for inv in invoices:
                 if inv.get("due_date") and inv["due_date"] != "N/A":
                     try:
@@ -563,7 +505,6 @@ async def get_invoice_tracking_dashboard():
                             day_invoice_count += 1
                     except:
                         continue
-
             if day_amount > 0:
                 cash_flow_calendar.append(
                     {
@@ -572,7 +513,6 @@ async def get_invoice_tracking_dashboard():
                         "invoice_count": day_invoice_count,
                     }
                 )
-
         result = clean_data_for_json(
             {
                 "total_outstanding": total_outstanding,
@@ -583,9 +523,7 @@ async def get_invoice_tracking_dashboard():
                 "health_percentage": health_percentage,
             }
         )
-
         return result
-
     except Exception as e:
         print(f"Dashboard error: {str(e)}")
         import traceback
@@ -608,7 +546,6 @@ async def update_invoice_status(invoice_data: Dict[str, Any]):
     try:
         invoice_id = invoice_data.get("id")
         new_status = invoice_data.get("status")
-
         return {
             "success": True,
             "message": f"Invoice status updated to {new_status}",
@@ -636,16 +573,13 @@ async def get_collections_health_metrics():
                     "error": "pandas not available",
                 }
             )
-
         dashboard_data = await get_invoice_tracking_dashboard()
-
         total_invoices = len(dashboard_data["invoices"])
         overdue_invoices = dashboard_data["status_counts"]["overdue"]
         total_amount = dashboard_data["total_outstanding"]
         overdue_amount = sum(
             i["amount"] for i in dashboard_data["invoices"] if i["status"] == "overdue"
         )
-
         avg_days_outstanding = 0
         if dashboard_data["invoices"]:
             today = datetime.now().date()
@@ -661,7 +595,6 @@ async def get_collections_health_metrics():
                     except:
                         continue
             avg_days_outstanding = sum(days_list) / len(days_list) if days_list else 0
-
         result = clean_data_for_json(
             {
                 "total_invoices": total_invoices,
@@ -677,9 +610,7 @@ async def get_collections_health_metrics():
                 "health_score": dashboard_data["health_percentage"],
             }
         )
-
         return result
-
     except Exception as e:
         return clean_data_for_json(
             {
@@ -702,7 +633,6 @@ async def create_new_xlsx():
                 status_code=503,
                 detail="Excel creation not available - pandas or openpyxl missing",
             )
-
         xlsx_exporter = get_xlsx_exporter()
         result = xlsx_exporter.create_new_file()
         return result
@@ -712,18 +642,6 @@ async def create_new_xlsx():
         raise HTTPException(
             status_code=500, detail=f"Failed to create new XLSX: {str(e)}"
         )
-
-
-@app.post("/api/invoices/parse")
-async def parse_invoice():
-    if not PDFPLUMBER_AVAILABLE:
-        raise HTTPException(
-            status_code=503, detail="PDF parsing not available - pdfplumber missing"
-        )
-    return {
-        "message": "Invoice parsing endpoint - upload feature coming soon",
-        "status": "stub",
-    }
 
 
 @app.get("/api/invoices/")
@@ -753,13 +671,10 @@ async def debug_routes():
 async def debug_files():
     IS_VERCEL = os.getenv("VERCEL") == "1"
     data_dir = "/tmp/data" if IS_VERCEL else "data"
-
     if not os.path.exists(data_dir):
         return {"error": "Data directory not found", "files": []}
-
     all_files = os.listdir(data_dir)
     xlsx_files = [f for f in all_files if f.endswith(".xlsx")]
-
     file_details = []
     for file in xlsx_files:
         file_path = os.path.join(data_dir, file)
@@ -771,7 +686,6 @@ async def debug_files():
                 "readable": os.access(file_path, os.R_OK),
             }
         )
-
     return {
         "data_directory": os.path.abspath(data_dir),
         "all_files": all_files,
@@ -781,7 +695,6 @@ async def debug_files():
 
 @app.get("/api/debug/env")
 async def debug_env():
-    """Debug environment information"""
     return {
         "is_vercel": os.getenv("VERCEL") == "1",
         "python_version": sys.version,
