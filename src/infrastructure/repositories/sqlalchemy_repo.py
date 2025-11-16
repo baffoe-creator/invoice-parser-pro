@@ -25,22 +25,39 @@ class InvoiceORM(Base):
 
 class SQLAlchemyInvoiceRepository:
     def __init__(self, database_url: str):
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+
         self.engine = create_engine(database_url)
         self.SessionLocal = sessionmaker(
             autocommit=False, autoflush=False, bind=self.engine
         )
-        Base.metadata.create_all(bind=self.engine)
+
+        try:
+            Base.metadata.create_all(bind=self.engine)
+            print("Database tables verified/created successfully")
+        except Exception as e:
+            print(f"Table creation skipped (may already exist): {e}")
 
     def save(self, invoice_data: Dict[str, Any], user_id: str, filename: str) -> str:
         db = self.SessionLocal()
         try:
+            vendor = invoice_data.get(
+                "vendor", invoice_data.get("vendor_name", "Unknown Vendor")
+            )
+            invoice_number = invoice_data.get("invoice_number", "Unknown")
+            invoice_date = invoice_data.get(
+                "invoice_date", invoice_data.get("date", "Unknown Date")
+            )
+            total_amount = float(invoice_data.get("total_amount", 0.0))
+
             invoice_orm = InvoiceORM(
                 user_id=user_id,
                 filename=filename,
-                vendor_name=invoice_data.get("vendor_name", "Unknown Vendor"),
-                invoice_number=invoice_data.get("invoice_number", "Unknown"),
-                invoice_date=invoice_data.get("date", "Unknown Date"),
-                total_amount=float(invoice_data.get("total_amount", 0.0)),
+                vendor_name=vendor,
+                invoice_number=invoice_number,
+                invoice_date=invoice_date,
+                total_amount=total_amount,
                 currency=invoice_data.get("currency", "USD"),
                 parsed_data=json.dumps(invoice_data),
             )
