@@ -1,6 +1,10 @@
 import os
 import sys
 
+print(f"🐍 Python executable: {sys.executable}")
+print(f"🐍 Python version: {sys.version}")
+
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from dotenv import load_dotenv

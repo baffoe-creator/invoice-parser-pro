@@ -22,6 +22,11 @@ class SupabaseInvoiceRepository:
     def get_session(self):
         return self.SessionLocal()
 
+    def save(self, invoice_data: Dict[str, Any], user_id: str, filename: str) -> str:
+        invoice_data["pdf_path"] = filename
+        invoice_data["user_id"] = user_id
+        return self.add_invoice(invoice_data)
+
     def add_invoice(self, invoice_data: Dict[str, Any]) -> str:
         session = self.get_session()
         try:
