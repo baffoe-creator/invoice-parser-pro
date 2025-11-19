@@ -87,36 +87,31 @@ def get_allowed_origins():
     return origins
 
 
-def get_cors_middleware():
-    """Create CORS middleware with comprehensive configuration"""
-    allowed_origins = get_allowed_origins()
+# Apply CORS middleware directly - FIXED VERSION
+allowed_origins = get_allowed_origins()
 
-    print(f"🌐 CORS enabled for {len(allowed_origins)} origins:")
-    for origin in allowed_origins:
-        print(f"   ✅ {origin}")
+print(f"🌐 CORS enabled for {len(allowed_origins)} origins:")
+for origin in allowed_origins:
+    print(f"   ✅ {origin}")
 
-    return CORSMiddleware(
-        app=app,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-        allow_headers=[
-            "*",
-            "Authorization",
-            "Content-Type",
-            "X-Requested-With",
-            "Access-Control-Allow-Origin",
-            "Access-Control-Allow-Headers",
-            "Access-Control-Allow-Methods",
-            "Access-Control-Allow-Credentials",
-        ],
-        expose_headers=["*"],
-        max_age=600,  # Cache preflight requests for 10 minutes
-    )
-
-
-# Apply CORS middleware
-app.add_middleware(get_cors_middleware())
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    allow_headers=[
+        "*",
+        "Authorization",
+        "Content-Type",
+        "X-Requested-With",
+        "Access-Control-Allow-Origin",
+        "Access-Control-Allow-Headers",
+        "Access-Control-Allow-Methods",
+        "Access-Control-Allow-Credentials",
+    ],
+    expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
+)
 
 _initialized = False
 
