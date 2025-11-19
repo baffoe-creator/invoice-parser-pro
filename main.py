@@ -17,6 +17,8 @@ import glob
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import math
+from urllib.parse import urlparse
+import time
 
 try:
     import pandas as pd
@@ -24,7 +26,7 @@ try:
     PANDAS_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
-    print("pandas not available - Excel features will be limited")
+    print("⚠️  pandas not available - Excel features will be limited")
 
 try:
     import psycopg2
@@ -32,7 +34,7 @@ try:
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
-    print("psycopg2 not available - database features will be limited")
+    print("⚠️  psycopg2 not available - database features will be limited")
 
 try:
     import pdfplumber
@@ -40,7 +42,7 @@ try:
     PDFPLUMBER_AVAILABLE = True
 except ImportError:
     PDFPLUMBER_AVAILABLE = False
-    print("pdfplumber not available - PDF parsing features will be limited")
+    print("⚠️  pdfplumber not available - PDF parsing features will be limited")
 
 try:
     from openpyxl import Workbook
@@ -48,7 +50,7 @@ try:
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
-    print("openpyxl not available - Excel export features will be limited")
+    print("⚠️  openpyxl not available - Excel export features will be limited")
 
 app = FastAPI(
     title="Invoice Parser Pro API",
@@ -58,7 +60,6 @@ app = FastAPI(
 
 
 def get_allowed_origins():
-    """Get list of allowed origins for CORS with environment variable support"""
     origins = [
         "http://localhost:3000",
         "http://localhost:5173",
@@ -68,13 +69,11 @@ def get_allowed_origins():
         "http://127.0.0.1:8000",
     ]
 
-    # Add frontend URL from environment if specified
     frontend_url = os.getenv("FRONTEND_URL")
     if frontend_url:
         origins.append(frontend_url)
         print(f"🌐 Added frontend URL from env: {frontend_url}")
 
-    # Add production URLs
     origins.extend(
         [
             "https://invoice-parser-pro.onrender.com",
@@ -82,12 +81,10 @@ def get_allowed_origins():
         ]
     )
 
-    # Remove duplicates and empty strings
     origins = list(set([origin for origin in origins if origin]))
     return origins
 
 
-# Apply CORS middleware directly - FIXED VERSION
 allowed_origins = get_allowed_origins()
 
 print(f"🌐 CORS enabled for {len(allowed_origins)} origins:")
@@ -99,18 +96,9 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allow_headers=[
-        "*",
-        "Authorization",
-        "Content-Type",
-        "X-Requested-With",
-        "Access-Control-Allow-Origin",
-        "Access-Control-Allow-Headers",
-        "Access-Control-Allow-Methods",
-        "Access-Control-Allow-Credentials",
-    ],
+    allow_headers=["*"],
     expose_headers=["*"],
-    max_age=600,  # Cache preflight requests for 10 minutes
+    max_age=600,
 )
 
 _initialized = False
@@ -124,17 +112,123 @@ class XLSXExporter:
         self.xlsx_file_path = os.path.join(
             self.data_dir, f"parsed_invoices_{self.session_id}.xlsx"
         )
+        self.columns = [
+            "vendor",
+            "invoice_number",
+            "invoice_date",
+            "due_date",
+            "subtotal_amount",
+            "discount_amount",
+            "discount_percentage",
+            "shipping_amount",
+            "tax_amount",
+            "total_amount",
+            "currency",
+            "filename",
+            "parsed_timestamp",
+        ]
+
+    def append_invoice_data(self, invoice_data):
+        try:
+            if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
+                return {"error": "pandas or openpyxl not available"}
+
+            row_data = {}
+            for column in self.columns:
+                if column == "parsed_timestamp":
+                    row_data[column] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                elif column == "filename":
+                    row_data[column] = invoice_data.get("filename", "unknown")
+                else:
+                    normalized = invoice_data.get("normalized_data", {})
+                    parsed = invoice_data.get("parsed_data", {})
+
+                    value = None
+                    if column in normalized and normalized[column] not in [
+                        None,
+                        "",
+                        "Unknown Date",
+                        "N/A",
+                    ]:
+                        value = normalized[column]
+                    elif column in parsed and parsed[column] not in [
+                        None,
+                        "",
+                        "Unknown Date",
+                        "N/A",
+                    ]:
+                        value = parsed[column]
+
+                    if column == "discount_percentage" and value:
+                        if isinstance(value, str) and "%" in value:
+                            value = float(value.replace("%", ""))
+
+                    row_data[column] = value
+
+            if os.path.exists(self.xlsx_file_path):
+                existing_df = pd.read_excel(self.xlsx_file_path)
+                new_df = pd.DataFrame([row_data])
+                combined_df = pd.concat(
+                    [existing_df, new_df], ignore_index=True, sort=False
+                )
+            else:
+                combined_df = pd.DataFrame([row_data])
+
+            for column in self.columns:
+                if column not in combined_df.columns:
+                    combined_df[column] = None
+
+            combined_df = combined_df[self.columns]
+
+            combined_df.to_excel(self.xlsx_file_path, index=False, engine="openpyxl")
+
+            return {
+                "success": True,
+                "message": "Data appended to XLSX file",
+                "filename": invoice_data.get("filename", "unknown"),
+                "file_path": self.xlsx_file_path,
+                "session_id": self.session_id,
+            }
+
+        except Exception as e:
+            print(f"❌ XLSX export error: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return {"error": f"Failed to export to XLSX: {str(e)}"}
 
     def get_file_stats(self):
         try:
             if not os.path.exists(self.xlsx_file_path):
                 return {"exists": False, "message": "File not found"}
+
             file_size = os.path.getsize(self.xlsx_file_path)
-            return {
-                "exists": True,
-                "file_size": file_size,
-                "file_path": self.xlsx_file_path,
-            }
+
+            if PANDAS_AVAILABLE:
+                df = pd.read_excel(self.xlsx_file_path)
+                row_count = len(df)
+                total_amount = (
+                    float(df["total_amount"].sum())
+                    if "total_amount" in df.columns
+                    else 0
+                )
+                stats = {
+                    "exists": True,
+                    "file_size": file_size,
+                    "file_path": self.xlsx_file_path,
+                    "row_count": row_count,
+                    "total_amount": total_amount,
+                    "columns": df.columns.tolist(),
+                    "last_modified": os.path.getmtime(self.xlsx_file_path),
+                }
+            else:
+                stats = {
+                    "exists": True,
+                    "file_size": file_size,
+                    "file_path": self.xlsx_file_path,
+                }
+
+            return stats
         except Exception as e:
             return {"exists": False, "error": str(e)}
 
@@ -142,17 +236,8 @@ class XLSXExporter:
         try:
             if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
                 return {"error": "pandas or openpyxl not available"}
-            df = pd.DataFrame(
-                columns=[
-                    "vendor",
-                    "invoice_number",
-                    "invoice_date",
-                    "total_amount",
-                    "tax_amount",
-                    "due_date",
-                ]
-            )
-            df.to_excel(self.xlsx_file_path, index=False)
+            df = pd.DataFrame(columns=self.columns)
+            df.to_excel(self.xlsx_file_path, index=False, engine="openpyxl")
             return {
                 "message": "New XLSX file created",
                 "file_path": self.xlsx_file_path,
@@ -177,6 +262,88 @@ def get_repository():
     return None
 
 
+def test_supabase_connection():
+    if not PSYCOPG2_AVAILABLE:
+        print("⚠️  psycopg2 not available, skipping database connection")
+        return False
+
+    try:
+        database_url = os.getenv("DATABASE_URL")
+
+        if not database_url:
+            print("❌ No DATABASE_URL found in environment variables")
+            return False
+
+        print("🔗 Testing database connection via DATABASE_URL...")
+
+        try:
+            result = urlparse(database_url)
+            hostname = result.hostname
+            username = result.username
+            password = result.password
+            port = result.port or 5432
+            database = result.path[1:] if result.path else "postgres"
+
+            print(f"   Hostname: {hostname}")
+            print(f"   Port: {port}")
+            print(f"   Database: {database}")
+            print(f"   Username: {username}")
+            print(f"   Password: {'✓' if password else '✗'}")
+
+            if hostname and "pooler" not in hostname and "supabase" in hostname:
+                print(
+                    "⚠️  Warning: Using direct Supabase URL instead of connection pooler"
+                )
+                print(
+                    "💡 Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+                )
+
+        except Exception as parse_error:
+            print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
+            return False
+
+        connection = psycopg2.connect(database_url, connect_timeout=10)
+
+        cursor = connection.cursor()
+        cursor.execute("SELECT NOW(), current_user, current_database();")
+        result = cursor.fetchone()
+        print(f"✅ Database connected successfully")
+        print(f"   Server time: {result[0]}")
+        print(f"   User: {result[1]}")
+        print(f"   Database: {result[2]}")
+
+        cursor.close()
+        connection.close()
+        return True
+
+    except psycopg2.OperationalError as e:
+        error_msg = str(e)
+        print(f"❌ Database connection failed: {error_msg}")
+
+        if "Tenant or user not found" in error_msg:
+            print("🔧 Supabase Connection Issue Detected:")
+            print("   1. Your DATABASE_URL format appears incorrect")
+            print(
+                "   2. Check your Supabase dashboard for the correct connection string"
+            )
+            print("   3. Use Connection Pooler format:")
+            print(
+                "      postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+            )
+            print("   4. Replace [project-ref] with your actual project reference")
+            print(
+                "   5. Ensure your password doesn't have special characters that need URL encoding"
+            )
+
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected database error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
 def initialize_app():
     global _initialized
     if _initialized:
@@ -187,7 +354,6 @@ def initialize_app():
         os.makedirs(data_dir, exist_ok=True)
         print(f"📁 Data directory: {data_dir}")
 
-        # Test database connection if credentials available
         if os.getenv("DATABASE_URL") or os.getenv("PGHOST"):
             connection_result = test_supabase_connection()
             if connection_result:
@@ -204,145 +370,6 @@ def initialize_app():
         import traceback
 
         traceback.print_exc()
-
-
-def test_supabase_connection():
-    """Test database connection with comprehensive error handling and diagnostics"""
-    if not PSYCOPG2_AVAILABLE:
-        print("⚠️  psycopg2 not available, skipping database connection")
-        return False
-
-    try:
-        from urllib.parse import urlparse
-
-        database_url = os.getenv("DATABASE_URL")
-
-        if database_url:
-            print("🔗 Testing database connection via DATABASE_URL...")
-            try:
-                result = urlparse(database_url)
-                hostname = result.hostname
-                print(f"   Hostname: {hostname}")
-                print(f"   Port: {result.port or 5432}")
-                print(f"   Database: {result.path[1:]}")
-
-                connection = psycopg2.connect(
-                    user=result.username,
-                    password=result.password,
-                    host=hostname,
-                    port=result.port or 5432,
-                    dbname=result.path[1:],
-                    connect_timeout=10,
-                )
-            except Exception as parse_error:
-                print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
-                return False
-        else:
-            # Try individual environment variables with multiple naming conventions
-            USER = (
-                os.getenv("PGUSER")
-                or os.getenv("user")
-                or os.getenv("DB_USER")
-                or os.getenv("SUPABASE_USER")
-            )
-            PASSWORD = (
-                os.getenv("PGPASSWORD")
-                or os.getenv("password")
-                or os.getenv("DB_PASSWORD")
-                or os.getenv("SUPABASE_PASSWORD")
-            )
-            HOST = (
-                os.getenv("PGHOST")
-                or os.getenv("host")
-                or os.getenv("DB_HOST")
-                or os.getenv("SUPABASE_HOST")
-            )
-            PORT = (
-                os.getenv("PGPORT")
-                or os.getenv("port")
-                or os.getenv("DB_PORT")
-                or "5432"
-            )
-            DBNAME = (
-                os.getenv("PGDATABASE")
-                or os.getenv("dbname")
-                or os.getenv("DB_NAME")
-                or "postgres"
-            )
-
-            print("🔗 Testing database connection via individual parameters...")
-            print(f"   Host: {HOST}")
-            print(f"   Port: {PORT}")
-            print(f"   Database: {DBNAME}")
-            print(f"   User: {USER}")
-            print(f"   Password: {'✓' if PASSWORD else '✗'}")
-
-            if not all([USER, PASSWORD, HOST]):
-                print("❌ Database credentials incomplete:")
-                print(f"   USER: {'✓' if USER else '✗'}")
-                print(f"   PASSWORD: {'✓' if PASSWORD else '✗'}")
-                print(f"   HOST: {'✓' if HOST else '✗'}")
-                return False
-
-            connection = psycopg2.connect(
-                user=USER,
-                password=PASSWORD,
-                host=HOST,
-                port=PORT,
-                dbname=DBNAME,
-                connect_timeout=10,
-            )
-
-        # Test the connection
-        cursor = connection.cursor()
-        cursor.execute("SELECT NOW(), version();")
-        result = cursor.fetchone()
-        print(f"✅ Database connected successfully")
-        print(f"   Server time: {result[0]}")
-        print(f"   PostgreSQL version: {result[1].split(',')[0]}")
-
-        cursor.close()
-        connection.close()
-        return True
-
-    except psycopg2.OperationalError as e:
-        error_msg = str(e)
-        print(f"❌ Database connection failed: {error_msg}")
-
-        # Provide specific troubleshooting guidance
-        if "could not translate host name" in error_msg:
-            print("🔧 DNS Resolution Issue Detected:")
-            print("   1. Verify the hostname is correct in environment variables")
-            print("   2. Check if service has internet access (Render services should)")
-            print("   3. For Supabase, try using Connection Pooler URL:")
-            print(
-                "      Format: postgresql://user:pass@aws-0-us-east-1-pooler.supabase.com:6543/postgres"
-            )
-            print("   4. Contact Render support if DNS issues persist")
-        elif "timeout" in error_msg.lower():
-            print("🔧 Connection Timeout Detected:")
-            print("   1. Check firewall rules in your database provider")
-            print("   2. Verify your service IP is whitelisted")
-            print("   3. Try increasing connect_timeout parameter")
-        elif "authentication failed" in error_msg:
-            print("🔧 Authentication Issue Detected:")
-            print("   1. Verify database password in environment variables")
-            print("   2. Check for special characters in password")
-            print("   3. Ensure username is correct")
-        elif "connection refused" in error_msg:
-            print("🔧 Connection Refused:")
-            print("   1. Verify database is running and accessible")
-            print("   2. Check port number configuration")
-            print("   3. Verify network connectivity")
-
-        return False
-
-    except Exception as e:
-        print(f"❌ Unexpected database error: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
 
 
 @app.middleware("http")
@@ -494,6 +521,7 @@ async def get_xlsx_stats():
                 float(df["total_amount"].sum()) if "total_amount" in df.columns else 0
             ),
             "file_size": os.path.getsize(latest_file),
+            "last_modified": os.path.getmtime(latest_file),
         }
     except Exception as e:
         return {
@@ -523,6 +551,8 @@ async def get_xlsx_data():
             "columns": df.columns.tolist(),
             "rows": df.fillna("").to_dict("records"),
             "row_count": len(df),
+            "file_size": os.path.getsize(latest_file),
+            "last_modified": os.path.getmtime(latest_file),
         }
     except HTTPException:
         raise
@@ -589,17 +619,25 @@ async def get_invoice_tracking_dashboard():
         total_outstanding = 0
         for index, row in df.iterrows():
             invoice_date = row.get("invoice_date")
-            due_date = None
-            if invoice_date and invoice_date != "":
-                if isinstance(invoice_date, str):
-                    try:
-                        invoice_date = pd.to_datetime(invoice_date)
-                    except:
+            due_date = row.get("due_date")
+
+            if not due_date or due_date == "":
+                if invoice_date and invoice_date != "":
+                    if isinstance(invoice_date, str):
+                        try:
+                            invoice_date = pd.to_datetime(invoice_date)
+                        except:
+                            invoice_date = None
+                    elif pd.isna(invoice_date):
                         invoice_date = None
-                elif pd.isna(invoice_date):
-                    invoice_date = None
-                if invoice_date and isinstance(invoice_date, datetime):
-                    due_date = invoice_date + timedelta(days=30)
+                    if invoice_date and isinstance(invoice_date, datetime):
+                        due_date = invoice_date + timedelta(days=30)
+            elif isinstance(due_date, str):
+                try:
+                    due_date = pd.to_datetime(due_date)
+                except:
+                    due_date = None
+
             status = "sent"
             if due_date:
                 today = datetime.now().date()
@@ -612,10 +650,12 @@ async def get_invoice_tracking_dashboard():
                     status = "due"
                 else:
                     status = "sent"
+
             vendor_str = str(row.get("vendor", ""))
             invoice_num_str = str(row.get("invoice_number", ""))
             if hash(vendor_str + invoice_num_str) % 3 == 0:
                 status = "viewed"
+
             amount = row.get("total_amount", 0)
             if amount == "" or pd.isna(amount):
                 amount = 0.0
@@ -624,6 +664,7 @@ async def get_invoice_tracking_dashboard():
                     amount = float(amount)
                 except (ValueError, TypeError):
                     amount = 0.0
+
             invoice_data = {
                 "id": f"inv_{index}_{hash(vendor_str + invoice_num_str)}",
                 "vendor": vendor_str if vendor_str != "" else "Unknown Vendor",
@@ -641,11 +682,16 @@ async def get_invoice_tracking_dashboard():
                 "amount": amount,
                 "status": status,
                 "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
-                "days_until_due": (due_date_date - today).days if due_date else None,
+                "days_until_due": (
+                    (due_date_date - today).days
+                    if due_date and isinstance(due_date, datetime)
+                    else None
+                ),
             }
             invoices.append(invoice_data)
             if status in ["sent", "viewed", "due"]:
                 total_outstanding += invoice_data["amount"]
+
         status_counts = {
             "sent": len([i for i in invoices if i["status"] == "sent"]),
             "viewed": len([i for i in invoices if i["status"] == "viewed"]),
@@ -687,6 +733,7 @@ async def get_invoice_tracking_dashboard():
                         "invoice_count": day_invoice_count,
                     }
                 )
+
         result = clean_data_for_json(
             {
                 "total_outstanding": total_outstanding,
@@ -731,74 +778,6 @@ async def update_invoice_status(invoice_data: Dict[str, Any]):
         )
 
 
-@app.get("/api/invoices/tracking/health-metrics")
-async def get_collections_health_metrics():
-    try:
-        if not PANDAS_AVAILABLE:
-            return clean_data_for_json(
-                {
-                    "total_invoices": 0,
-                    "overdue_invoices": 0,
-                    "overdue_percentage": 0,
-                    "total_amount": 0,
-                    "overdue_amount": 0,
-                    "avg_days_outstanding": 0,
-                    "health_score": 100,
-                    "error": "pandas not available",
-                }
-            )
-        dashboard_data = await get_invoice_tracking_dashboard()
-        total_invoices = len(dashboard_data["invoices"])
-        overdue_invoices = dashboard_data["status_counts"]["overdue"]
-        total_amount = dashboard_data["total_outstanding"]
-        overdue_amount = sum(
-            i["amount"] for i in dashboard_data["invoices"] if i["status"] == "overdue"
-        )
-        avg_days_outstanding = 0
-        if dashboard_data["invoices"]:
-            today = datetime.now().date()
-            days_list = []
-            for inv in dashboard_data["invoices"]:
-                if inv.get("invoice_date") and inv["invoice_date"] != "N/A":
-                    try:
-                        inv_date = datetime.strptime(
-                            inv["invoice_date"], "%Y-%m-%d"
-                        ).date()
-                        days_outstanding = (today - inv_date).days
-                        days_list.append(days_outstanding)
-                    except:
-                        continue
-            avg_days_outstanding = sum(days_list) / len(days_list) if days_list else 0
-        result = clean_data_for_json(
-            {
-                "total_invoices": total_invoices,
-                "overdue_invoices": overdue_invoices,
-                "overdue_percentage": (
-                    (overdue_invoices / total_invoices * 100)
-                    if total_invoices > 0
-                    else 0
-                ),
-                "total_amount": total_amount,
-                "overdue_amount": overdue_amount,
-                "avg_days_outstanding": avg_days_outstanding,
-                "health_score": dashboard_data["health_percentage"],
-            }
-        )
-        return result
-    except Exception as e:
-        return clean_data_for_json(
-            {
-                "total_invoices": 0,
-                "overdue_invoices": 0,
-                "overdue_percentage": 0,
-                "total_amount": 0,
-                "overdue_amount": 0,
-                "avg_days_outstanding": 0,
-                "health_score": 100,
-            }
-        )
-
-
 @app.post("/api/invoices/xlsx/create-new")
 async def create_new_xlsx():
     try:
@@ -827,62 +806,9 @@ async def get_invoices():
     }
 
 
-@app.get("/api/debug/routes")
-async def debug_routes():
-    routes = []
-    for route in app.routes:
-        routes.append(
-            {
-                "path": getattr(route, "path", None),
-                "name": getattr(route, "name", None),
-                "methods": getattr(route, "methods", None),
-            }
-        )
-    return {"routes": routes}
-
-
-@app.get("/api/debug/files")
-async def debug_files():
-    data_dir = "data"
-    if not os.path.exists(data_dir):
-        return {"error": "Data directory not found", "files": []}
-    all_files = os.listdir(data_dir)
-    xlsx_files = [f for f in all_files if f.endswith(".xlsx")]
-    file_details = []
-    for file in xlsx_files:
-        file_path = os.path.join(data_dir, file)
-        file_details.append(
-            {
-                "name": file,
-                "size": os.path.getsize(file_path),
-                "modified": os.path.getmtime(file_path),
-                "readable": os.access(file_path, os.R_OK),
-            }
-        )
-    return {
-        "data_directory": os.path.abspath(data_dir),
-        "all_files": all_files,
-        "xlsx_files": file_details,
-    }
-
-
-@app.get("/api/debug/env")
-async def debug_env():
-    return {
-        "python_version": sys.version,
-        "pandas_available": PANDAS_AVAILABLE,
-        "psycopg2_available": PSYCOPG2_AVAILABLE,
-        "pdfplumber_available": PDFPLUMBER_AVAILABLE,
-        "openpyxl_available": OPENPYXL_AVAILABLE,
-        "has_database_url": bool(os.getenv("DATABASE_URL")),
-        "data_dir": "data",
-    }
-
-
 @app.get("/api/debug/database")
 async def debug_database():
     import socket
-    from urllib.parse import urlparse
 
     result = {
         "database_url_exists": bool(os.getenv("DATABASE_URL")),
@@ -911,7 +837,6 @@ async def debug_database():
                     "error": str(e),
                     "suggestion": "DNS resolution failed. Check network connectivity or try using Connection Pooler",
                 }
-
         except Exception as e:
             result["parse_error"] = str(e)
 
