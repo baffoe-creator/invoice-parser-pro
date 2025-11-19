@@ -1,10 +1,12 @@
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import OperationalError
 from src.infrastructure.models.supabase_models import Invoice, Base
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import uuid
+import time
 
 
 class SupabaseInvoiceRepository:
@@ -12,23 +14,87 @@ class SupabaseInvoiceRepository:
         if database_url is None:
             database_url = os.getenv("DATABASE_URL")
 
-        self.engine = create_engine(database_url)
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
+        self.engine = None
+        self.SessionLocal = None
+        self.connected = False
 
-        Base.metadata.create_all(bind=self.engine)
+        if not database_url:
+            print("⚠️  No DATABASE_URL provided, running in offline mode")
+            return
+
+        max_retries = 3
+        retry_delay = 2
+
+        for attempt in range(max_retries):
+            try:
+                print(f"🔄 Database connection attempt {attempt + 1}/{max_retries}...")
+
+                self.engine = create_engine(
+                    database_url,
+                    pool_pre_ping=True,
+                    pool_recycle=300,
+                    connect_args={
+                        "connect_timeout": 10,
+                        "application_name": "invoice-parser-pro",
+                    },
+                )
+
+                with self.engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+
+                self.SessionLocal = sessionmaker(
+                    autocommit=False, autoflush=False, bind=self.engine
+                )
+
+                Base.metadata.create_all(bind=self.engine)
+
+                self.connected = True
+                print("✅ Database connected successfully")
+                break
+
+            except OperationalError as e:
+                error_msg = str(e)
+                print(f"❌ Connection attempt {attempt + 1} failed: {error_msg}")
+
+                if attempt < max_retries - 1:
+                    print(f"⏳ Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    print("⚠️  All connection attempts failed, running in offline mode")
+                    print("📝 Data will be stored locally only")
+                    self.engine = None
+                    self.SessionLocal = None
+
+            except Exception as e:
+                print(f"❌ Unexpected error during initialization: {e}")
+                import traceback
+
+                traceback.print_exc()
+                break
+
+    def is_connected(self):
+        return self.connected
 
     def get_session(self):
+        if not self.connected or self.SessionLocal is None:
+            return None
         return self.SessionLocal()
 
     def save(self, invoice_data: Dict[str, Any], user_id: str, filename: str) -> str:
+        if not self.connected:
+            print(f"⚠️  Database not connected, cannot save: {filename}")
+            return f"offline_{hash(filename)}"
+
         invoice_data["pdf_path"] = filename
         invoice_data["user_id"] = user_id
         return self.add_invoice(invoice_data)
 
     def add_invoice(self, invoice_data: Dict[str, Any]) -> str:
         session = self.get_session()
+        if session is None:
+            print("⚠️  No database session available")
+            return f"offline_{hash(str(invoice_data))}"
+
         try:
             invoice_id = str(uuid.uuid4())
 
@@ -49,15 +115,20 @@ class SupabaseInvoiceRepository:
 
             session.add(invoice)
             session.commit()
+            print(f"✅ Invoice saved to database: {invoice_id}")
             return invoice_id
         except Exception as e:
             session.rollback()
+            print(f"❌ Error saving invoice: {e}")
             raise e
         finally:
             session.close()
 
     def get_invoice(self, invoice_id: str) -> Optional[Dict[str, Any]]:
         session = self.get_session()
+        if session is None:
+            return None
+
         try:
             invoice = session.query(Invoice).filter(Invoice.id == invoice_id).first()
             return invoice.to_dict() if invoice else None
@@ -68,6 +139,9 @@ class SupabaseInvoiceRepository:
         self, session_id: str = None, user_id: str = "demo_user"
     ) -> List[Dict[str, Any]]:
         session = self.get_session()
+        if session is None:
+            return []
+
         try:
             query = session.query(Invoice).filter(Invoice.user_id == user_id)
 
@@ -84,8 +158,14 @@ class SupabaseInvoiceRepository:
     ) -> List[Dict[str, Any]]:
         return self.get_all_invoices(session_id=session_id, user_id=user_id)
 
+    def get_by_user(self, user_id: str) -> List[Dict[str, Any]]:
+        return self.get_all_invoices(user_id=user_id)
+
     def delete_invoice(self, invoice_id: str) -> bool:
         session = self.get_session()
+        if session is None:
+            return False
+
         try:
             invoice = session.query(Invoice).filter(Invoice.id == invoice_id).first()
             if invoice:
@@ -103,6 +183,9 @@ class SupabaseInvoiceRepository:
         self, session_id: str, user_id: str = "demo_user"
     ) -> bool:
         session = self.get_session()
+        if session is None:
+            return False
+
         try:
             session.query(Invoice).filter(
                 Invoice.session_id == session_id, Invoice.user_id == user_id
@@ -119,6 +202,9 @@ class SupabaseInvoiceRepository:
         self, session_id: str, user_id: str = "demo_user"
     ) -> Dict[str, Any]:
         session = self.get_session()
+        if session is None:
+            return {"count": 0, "total_amount": 0.0}
+
         try:
             result = (
                 session.query(

@@ -50,7 +50,11 @@ class ParseInvoiceUseCase:
     async def execute(self, file_content, filename, user_id):
         try:
             parsed_data = self.parser.parse_invoice(file_content, filename)
-            saved_id = self.repo.save(parsed_data, user_id, filename)
+            if self.repo and self.repo.is_connected():
+                saved_id = self.repo.save(parsed_data, user_id, filename)
+            else:
+                saved_id = f"local_{hash(filename)}"
+                print("⚠️ Database not connected, using local ID")
             return {
                 "success": True,
                 "parsed_data": parsed_data,
@@ -67,7 +71,8 @@ class ParseInvoiceUseCase:
 class SQLAlchemyInvoiceRepository:
     def __init__(self, database_url):
         self.database_url = database_url
-        print(f"📝 Fallback repository for: {database_url}")
+        self.connected = False
+        print(f"📝 Fallback repository initialized")
 
     def save(self, invoice_data, user_id, filename):
         print(f"📝 Fallback save: {user_id}, {filename}")
@@ -76,6 +81,9 @@ class SQLAlchemyInvoiceRepository:
     def get_by_user(self, user_id):
         print(f"📝 Fallback get_by_user: {user_id}")
         return []
+
+    def is_connected(self):
+        return self.connected
 
 
 class SecureFileHandler:
@@ -212,25 +220,31 @@ logger = logging.getLogger(__name__)
 
 
 def get_invoice_repository():
-    """Get the Supabase invoice repository"""
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        # Fallback: construct from individual parts
-        user = os.getenv("user")
-        password = os.getenv("password")
-        host = os.getenv("host")
-        port = os.getenv("port", "5432")
-        dbname = os.getenv("database", "postgres")
+        user = os.getenv("PGUSER") or os.getenv("user")
+        password = os.getenv("PGPASSWORD") or os.getenv("password")
+        host = os.getenv("PGHOST") or os.getenv("host")
+        port = os.getenv("PGPORT") or os.getenv("port") or "5432"
+        dbname = (
+            os.getenv("PGDATABASE")
+            or os.getenv("dbname")
+            or os.getenv("database")
+            or "postgres"
+        )
 
         if all([user, password, host]):
             database_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
         else:
-            raise HTTPException(
-                status_code=503, detail="Database configuration not available"
-            )
+            print("⚠️ Database credentials not complete, using fallback repository")
+            return SQLAlchemyInvoiceRepository("fallback")
 
-    return SupabaseInvoiceRepository(database_url)
+    try:
+        return SupabaseInvoiceRepository(database_url)
+    except Exception as e:
+        print(f"⚠️ Failed to initialize Supabase repository: {e}")
+        return SQLAlchemyInvoiceRepository(database_url)
 
 
 def get_file_handler():
@@ -248,7 +262,7 @@ def get_invoice_parser():
 @router.post("/parse")
 async def parse_invoice(
     file: UploadFile = File(...),
-    repo: SQLAlchemyInvoiceRepository = Depends(get_invoice_repository),
+    repo: SupabaseInvoiceRepository = Depends(get_invoice_repository),
     file_handler: SecureFileHandler = Depends(get_file_handler),
     xlsx_exporter: XLSXExporter = Depends(get_xlsx_exporter),
     parser: PdfPlumberParser = Depends(get_invoice_parser),
@@ -286,7 +300,7 @@ async def parse_invoice(
 @router.post("/bulk")
 async def parse_bulk_invoices(
     files: List[UploadFile] = File(...),
-    repo: SQLAlchemyInvoiceRepository = Depends(get_invoice_repository),
+    repo: SupabaseInvoiceRepository = Depends(get_invoice_repository),
     file_handler: SecureFileHandler = Depends(get_file_handler),
     xlsx_exporter: XLSXExporter = Depends(get_xlsx_exporter),
     parser: PdfPlumberParser = Depends(get_invoice_parser),
@@ -357,10 +371,13 @@ async def parse_bulk_invoices(
 
 @router.get("/")
 async def get_all_invoices(
-    repo: SQLAlchemyInvoiceRepository = Depends(get_invoice_repository),
+    repo: SupabaseInvoiceRepository = Depends(get_invoice_repository),
 ):
     try:
-        invoices = repo.get_by_user("demo_user")
+        if repo and repo.is_connected():
+            invoices = repo.get_by_user("demo_user")
+        else:
+            invoices = []
         return {"invoices": invoices}
     except Exception as e:
         raise HTTPException(
@@ -371,7 +388,7 @@ async def get_all_invoices(
 @router.post("/test")
 async def test_parsing(
     file: UploadFile = File(...),
-    repo: SQLAlchemyInvoiceRepository = Depends(get_invoice_repository),
+    repo: SupabaseInvoiceRepository = Depends(get_invoice_repository),
     file_handler: SecureFileHandler = Depends(get_file_handler),
     parser: PdfPlumberParser = Depends(get_invoice_parser),
 ):

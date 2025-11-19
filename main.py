@@ -4,7 +4,6 @@ import sys
 print(f"🐍 Python executable: {sys.executable}")
 print(f"🐍 Python version: {sys.version}")
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from dotenv import load_dotenv
@@ -57,21 +56,74 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+def get_allowed_origins():
+    """Get list of allowed origins for CORS with environment variable support"""
+    origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ]
+
+    # Add frontend URL from environment if specified
+    frontend_url = os.getenv("FRONTEND_URL")
+    if frontend_url:
+        origins.append(frontend_url)
+        print(f"🌐 Added frontend URL from env: {frontend_url}")
+
+    # Add production URLs
+    origins.extend(
+        [
+            "https://invoice-parser-pro.onrender.com",
+            "https://invoice-parser-proo.onrender.com",
+        ]
+    )
+
+    # Remove duplicates and empty strings
+    origins = list(set([origin for origin in origins if origin]))
+    return origins
+
+
+def get_cors_middleware():
+    """Create CORS middleware with comprehensive configuration"""
+    allowed_origins = get_allowed_origins()
+
+    print(f"🌐 CORS enabled for {len(allowed_origins)} origins:")
+    for origin in allowed_origins:
+        print(f"   ✅ {origin}")
+
+    return CORSMiddleware(
+        app=app,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+        allow_headers=[
+            "*",
+            "Authorization",
+            "Content-Type",
+            "X-Requested-With",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Headers",
+            "Access-Control-Allow-Methods",
+            "Access-Control-Allow-Credentials",
+        ],
+        expose_headers=["*"],
+        max_age=600,  # Cache preflight requests for 10 minutes
+    )
+
+
+# Apply CORS middleware
+app.add_middleware(get_cors_middleware())
 
 _initialized = False
 
 
 class XLSXExporter:
     def __init__(self):
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        self.data_dir = "/tmp/data" if IS_VERCEL else "data"
+        self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
         self.session_id = "default"
         self.xlsx_file_path = os.path.join(
@@ -134,48 +186,167 @@ def initialize_app():
     global _initialized
     if _initialized:
         return
-    print("Starting Invoice Parser Pro API...")
+    print("🚀 Starting Invoice Parser Pro API...")
     try:
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        data_dir = "/tmp/data" if IS_VERCEL else "data"
+        data_dir = "data"
         os.makedirs(data_dir, exist_ok=True)
-        print(f"Data directory: {data_dir}")
-        if IS_VERCEL or os.getenv("SUPABASE_URL"):
-            test_supabase_connection()
+        print(f"📁 Data directory: {data_dir}")
+
+        # Test database connection if credentials available
+        if os.getenv("DATABASE_URL") or os.getenv("PGHOST"):
+            connection_result = test_supabase_connection()
+            if connection_result:
+                print("✅ Database connection verified")
+            else:
+                print("⚠️  Database connection failed - using fallback storage")
+        else:
+            print("ℹ️  No database configuration found - using file-based storage")
+
         _initialized = True
-        print("Application initialized successfully")
+        print("🎉 Application initialized successfully")
     except Exception as e:
-        print(f"Initialization error: {e}")
+        print(f"❌ Initialization error: {e}")
         import traceback
 
         traceback.print_exc()
 
 
 def test_supabase_connection():
+    """Test database connection with comprehensive error handling and diagnostics"""
     if not PSYCOPG2_AVAILABLE:
-        print("psycopg2 not available, skipping database connection")
-        return None
+        print("⚠️  psycopg2 not available, skipping database connection")
+        return False
+
     try:
-        USER = os.getenv("user")
-        PASSWORD = os.getenv("password")
-        HOST = os.getenv("host")
-        PORT = os.getenv("port")
-        DBNAME = os.getenv("dbname")
-        if not all([USER, PASSWORD, HOST, PORT, DBNAME]):
-            print("Supabase credentials not found")
-            return False
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
+        from urllib.parse import urlparse
+
+        database_url = os.getenv("DATABASE_URL")
+
+        if database_url:
+            print("🔗 Testing database connection via DATABASE_URL...")
+            try:
+                result = urlparse(database_url)
+                hostname = result.hostname
+                print(f"   Hostname: {hostname}")
+                print(f"   Port: {result.port or 5432}")
+                print(f"   Database: {result.path[1:]}")
+
+                connection = psycopg2.connect(
+                    user=result.username,
+                    password=result.password,
+                    host=hostname,
+                    port=result.port or 5432,
+                    dbname=result.path[1:],
+                    connect_timeout=10,
+                )
+            except Exception as parse_error:
+                print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
+                return False
+        else:
+            # Try individual environment variables with multiple naming conventions
+            USER = (
+                os.getenv("PGUSER")
+                or os.getenv("user")
+                or os.getenv("DB_USER")
+                or os.getenv("SUPABASE_USER")
+            )
+            PASSWORD = (
+                os.getenv("PGPASSWORD")
+                or os.getenv("password")
+                or os.getenv("DB_PASSWORD")
+                or os.getenv("SUPABASE_PASSWORD")
+            )
+            HOST = (
+                os.getenv("PGHOST")
+                or os.getenv("host")
+                or os.getenv("DB_HOST")
+                or os.getenv("SUPABASE_HOST")
+            )
+            PORT = (
+                os.getenv("PGPORT")
+                or os.getenv("port")
+                or os.getenv("DB_PORT")
+                or "5432"
+            )
+            DBNAME = (
+                os.getenv("PGDATABASE")
+                or os.getenv("dbname")
+                or os.getenv("DB_NAME")
+                or "postgres"
+            )
+
+            print("🔗 Testing database connection via individual parameters...")
+            print(f"   Host: {HOST}")
+            print(f"   Port: {PORT}")
+            print(f"   Database: {DBNAME}")
+            print(f"   User: {USER}")
+            print(f"   Password: {'✓' if PASSWORD else '✗'}")
+
+            if not all([USER, PASSWORD, HOST]):
+                print("❌ Database credentials incomplete:")
+                print(f"   USER: {'✓' if USER else '✗'}")
+                print(f"   PASSWORD: {'✓' if PASSWORD else '✗'}")
+                print(f"   HOST: {'✓' if HOST else '✗'}")
+                return False
+
+            connection = psycopg2.connect(
+                user=USER,
+                password=PASSWORD,
+                host=HOST,
+                port=PORT,
+                dbname=DBNAME,
+                connect_timeout=10,
+            )
+
+        # Test the connection
         cursor = connection.cursor()
-        cursor.execute("SELECT NOW();")
+        cursor.execute("SELECT NOW(), version();")
         result = cursor.fetchone()
-        print(f"Supabase connected: {result}")
+        print(f"✅ Database connected successfully")
+        print(f"   Server time: {result[0]}")
+        print(f"   PostgreSQL version: {result[1].split(',')[0]}")
+
         cursor.close()
         connection.close()
         return True
+
+    except psycopg2.OperationalError as e:
+        error_msg = str(e)
+        print(f"❌ Database connection failed: {error_msg}")
+
+        # Provide specific troubleshooting guidance
+        if "could not translate host name" in error_msg:
+            print("🔧 DNS Resolution Issue Detected:")
+            print("   1. Verify the hostname is correct in environment variables")
+            print("   2. Check if service has internet access (Render services should)")
+            print("   3. For Supabase, try using Connection Pooler URL:")
+            print(
+                "      Format: postgresql://user:pass@aws-0-us-east-1-pooler.supabase.com:6543/postgres"
+            )
+            print("   4. Contact Render support if DNS issues persist")
+        elif "timeout" in error_msg.lower():
+            print("🔧 Connection Timeout Detected:")
+            print("   1. Check firewall rules in your database provider")
+            print("   2. Verify your service IP is whitelisted")
+            print("   3. Try increasing connect_timeout parameter")
+        elif "authentication failed" in error_msg:
+            print("🔧 Authentication Issue Detected:")
+            print("   1. Verify database password in environment variables")
+            print("   2. Check for special characters in password")
+            print("   3. Ensure username is correct")
+        elif "connection refused" in error_msg:
+            print("🔧 Connection Refused:")
+            print("   1. Verify database is running and accessible")
+            print("   2. Check port number configuration")
+            print("   3. Verify network connectivity")
+
+        return False
+
     except Exception as e:
-        print(f"Supabase connection failed: {e}")
+        print(f"❌ Unexpected database error: {e}")
+        import traceback
+
+        traceback.print_exc()
         return False
 
 
@@ -203,10 +374,18 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    db_status = "unknown"
+    if PSYCOPG2_AVAILABLE:
+        try:
+            db_status = "connected" if test_supabase_connection() else "disconnected"
+        except:
+            db_status = "error"
+
     return {
         "status": "healthy",
         "service": "Invoice Parser Pro API",
         "version": "1.0.0",
+        "database_status": db_status,
         "pandas_available": PANDAS_AVAILABLE,
         "database_available": PSYCOPG2_AVAILABLE,
         "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
@@ -233,9 +412,9 @@ try:
     from src.api.endpoints import invoices
 
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
-    print("Invoice routes loaded")
+    print("✅ Invoice routes loaded successfully")
 except Exception as e:
-    print(f"Could not load invoice routes: {e}")
+    print(f"❌ Could not load invoice routes: {e}")
 
 
 @app.get("/api/export/xlsx")
@@ -264,8 +443,7 @@ async def export_xlsx():
 @app.get("/api/export/download-xlsx")
 async def download_xlsx():
     try:
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        data_dir = "/tmp/data" if IS_VERCEL else "data"
+        data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
@@ -293,8 +471,7 @@ async def get_xlsx_stats():
                 "row_count": 0,
                 "total_amount": 0,
             }
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        data_dir = "/tmp/data" if IS_VERCEL else "data"
+        data_dir = "data"
         if not os.path.exists(data_dir):
             return {
                 "exists": False,
@@ -338,8 +515,7 @@ async def get_xlsx_data():
     try:
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        data_dir = "/tmp/data" if IS_VERCEL else "data"
+        data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
@@ -387,8 +563,7 @@ async def get_invoice_tracking_dashboard():
                     "error": "pandas not available",
                 }
             )
-        IS_VERCEL = os.getenv("VERCEL") == "1"
-        data_dir = "/tmp/data" if IS_VERCEL else "data"
+        data_dir = "data"
         if not os.path.exists(data_dir):
             return clean_data_for_json(
                 {
@@ -673,8 +848,7 @@ async def debug_routes():
 
 @app.get("/api/debug/files")
 async def debug_files():
-    IS_VERCEL = os.getenv("VERCEL") == "1"
-    data_dir = "/tmp/data" if IS_VERCEL else "data"
+    data_dir = "data"
     if not os.path.exists(data_dir):
         return {"error": "Data directory not found", "files": []}
     all_files = os.listdir(data_dir)
@@ -700,15 +874,69 @@ async def debug_files():
 @app.get("/api/debug/env")
 async def debug_env():
     return {
-        "is_vercel": os.getenv("VERCEL") == "1",
         "python_version": sys.version,
         "pandas_available": PANDAS_AVAILABLE,
         "psycopg2_available": PSYCOPG2_AVAILABLE,
         "pdfplumber_available": PDFPLUMBER_AVAILABLE,
         "openpyxl_available": OPENPYXL_AVAILABLE,
-        "has_supabase_url": bool(os.getenv("SUPABASE_URL")),
-        "data_dir": "/tmp/data" if os.getenv("VERCEL") == "1" else "data",
+        "has_database_url": bool(os.getenv("DATABASE_URL")),
+        "data_dir": "data",
     }
 
 
-handler = app
+@app.get("/api/debug/database")
+async def debug_database():
+    import socket
+    from urllib.parse import urlparse
+
+    result = {
+        "database_url_exists": bool(os.getenv("DATABASE_URL")),
+        "individual_vars": {
+            "host": bool(os.getenv("PGHOST") or os.getenv("host")),
+            "user": bool(os.getenv("PGUSER") or os.getenv("user")),
+            "password": bool(os.getenv("PGPASSWORD") or os.getenv("password")),
+        },
+        "dns_resolution": {},
+        "connection_test": {},
+    }
+
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        try:
+            parsed = urlparse(database_url)
+            hostname = parsed.hostname
+            result["hostname"] = hostname
+
+            try:
+                ip_address = socket.gethostbyname(hostname)
+                result["dns_resolution"] = {"success": True, "ip_address": ip_address}
+            except socket.gaierror as e:
+                result["dns_resolution"] = {
+                    "success": False,
+                    "error": str(e),
+                    "suggestion": "DNS resolution failed. Check network connectivity or try using Connection Pooler",
+                }
+
+        except Exception as e:
+            result["parse_error"] = str(e)
+
+    if PSYCOPG2_AVAILABLE:
+        result["connection_test"]["psycopg2_available"] = True
+        try:
+            connection_result = test_supabase_connection()
+            result["connection_test"]["success"] = connection_result
+        except Exception as e:
+            result["connection_test"]["success"] = False
+            result["connection_test"]["error"] = str(e)
+    else:
+        result["connection_test"]["psycopg2_available"] = False
+        result["connection_test"]["success"] = False
+        result["connection_test"]["error"] = "psycopg2 not available"
+
+    return result
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
