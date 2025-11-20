@@ -1,5 +1,6 @@
 import os
 import sys
+import datetime
 
 print(f"🐍 Python executable: {sys.executable}")
 print(f"🐍 Python version: {sys.version}")
@@ -413,6 +414,40 @@ async def health_check():
         "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
         "excel_export_available": OPENPYXL_AVAILABLE,
     }
+
+
+@app.get("/api/debug/database-test")
+async def debug_database_test():
+    """Test database connection with detailed error reporting"""
+    import psycopg2
+    from urllib.parse import urlparse
+
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        return {"error": "DATABASE_URL not found in environment"}
+
+    try:
+        # Test the exact connection string
+        conn = psycopg2.connect(database_url, connect_timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT version();")
+        version = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        return {
+            "status": "connected",
+            "version": version[0],
+            "database_url_preview": database_url[:80] + "...",
+        }
+
+    except psycopg2.OperationalError as e:
+        return {
+            "status": "failed",
+            "error": str(e),
+            "suggestion": "Check if your password needs URL encoding for special characters",
+        }
 
 
 @app.post("/api/auth/demo-login")
