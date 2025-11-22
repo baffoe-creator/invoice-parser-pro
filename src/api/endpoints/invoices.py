@@ -1,8 +1,10 @@
 import os
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import JSONResponse, FileResponse
+import datetime
 from typing import List, Dict, Any
 import logging
+
 import tempfile
 from src.infrastructure.repositories.supabase_repository import (
     SupabaseInvoiceRepository,
@@ -99,16 +101,43 @@ class SecureFileHandler:
 
 class InvoiceDataNormalizer:
     def normalize(self, data, filename):
+        # Extract line items properly
+        line_items = data.get("line_items", [])
+        line_item_description = ""
+        line_item_quantity = 0.0
+        line_item_unit_price = 0.0
+        line_item_amount = 0.0
+
+        if line_items and len(line_items) > 0:
+            first_item = line_items[0]
+            line_item_description = first_item.get("description", "")
+            line_item_quantity = float(first_item.get("quantity", 0))
+            line_item_unit_price = float(first_item.get("unit_price", 0))
+            line_item_amount = float(first_item.get("amount", 0))
+
         normalized = {
+            "file_name": filename,
             "vendor": data.get("vendor", "Unknown Vendor"),
             "invoice_number": data.get("invoice_number", "Unknown"),
             "invoice_date": data.get("invoice_date", "Unknown Date"),
-            "total_amount": float(data.get("total_amount", 0)),
+            "subtotal": float(data.get("subtotal", 0)),
+            "shipping_amount": float(data.get("shipping_amount", 0)),
             "tax_amount": float(data.get("tax_amount", 0)),
-            "due_date": data.get("due_date", ""),
+            "total_amount": float(data.get("total_amount", 0)),
             "currency": data.get("currency", "USD"),
-            "filename": filename,
+            "due_date": data.get("due_date", ""),
+            "discount_amount": float(data.get("discount_amount", 0)),
+            "discount_percentage": float(data.get("discount_percentage", 0)),
+            "line_item_description": line_item_description,
+            "line_item_quantity": line_item_quantity,
+            "line_item_unit_price": line_item_unit_price,
+            "line_item_amount": line_item_amount,
+            "parsed_timestamp": datetime.datetime.now().isoformat(),
         }
+
+        print(
+            f"📊 NORMALIZER OUTPUT - Total: {normalized['total_amount']}, Tax: {normalized['tax_amount']}, Shipping: {normalized['shipping_amount']}"
+        )
         return normalized
 
 
@@ -264,25 +293,34 @@ async def parse_invoice(
     file: UploadFile = File(...),
     repo: SupabaseInvoiceRepository = Depends(get_invoice_repository),
     file_handler: SecureFileHandler = Depends(get_file_handler),
-    xlsx_exporter: XLSXExporter = Depends(get_xlsx_exporter),
     parser: PdfPlumberParser = Depends(get_invoice_parser),
 ):
     try:
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
         file_content = await file.read()
         filename = file.filename
         await file_handler.validate_file(file_content, filename)
+
         use_case = ParseInvoiceUseCase(parser, repo, file_handler)
         parsed_result = await use_case.execute(file_content, filename, "demo_user")
+
         if not parsed_result["success"]:
             raise HTTPException(
                 status_code=500, detail=parsed_result.get("error", "Parsing failed")
             )
+
+        # Use the comprehensive XLSXExporter from xlsx_exporter.py
+        from src.xlsx_exporter import XLSXExporter
+
+        xlsx_exporter = XLSXExporter()
+
         normalized_data = data_normalizer.normalize(
             parsed_result["parsed_data"], filename
         )
         export_result = xlsx_exporter.append_normalized_data(normalized_data, filename)
+
         return {
             "filename": filename,
             "parsed_data": parsed_result["parsed_data"],
