@@ -77,6 +77,8 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
             "final_total": Decimal("0"),
         }
 
+        print(f"🔍 RAW TEXT FOR DEBUGGING:\n{text[:2000]}")
+
         balance_due_match = re.search(
             r"Balance Due:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE
         )
@@ -102,33 +104,45 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
         if subtotal_match:
             financials["subtotal"] = Decimal(subtotal_match.group(1).replace(",", ""))
 
-        discount_amount_match = re.search(
-            r"Discount\s*[^:\n]*:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE
-        )
-        discount_percent_match = re.search(
-            r"Discount\s*\(?(\d+\.?\d*)%?\)?", text, re.IGNORECASE
-        )
-        discount_line_match = re.search(
+        discount_patterns = [
+            r"Discount\s*[^:\n]*:\s*\$?\s*([\d,]+\.\d{2})",
             r"\$?([\d,]+\.\d{2})\s*\(?(\d+\.?\d*)%?\)?\s*[Dd]iscount",
-            text,
-            re.IGNORECASE,
-        )
+            r"Discount\s*Amount\s*:\s*\$?\s*([\d,]+\.\d{2})",
+            r"Savings\s*:\s*\$?\s*([\d,]+\.\d{2})",
+            r"Deduction\s*:\s*\$?\s*([\d,]+\.\d{2})",
+            r"Less\s*:\s*\$?\s*([\d,]+\.\d{2})",
+        ]
 
-        if discount_amount_match:
-            financials["discount"] = Decimal(
-                discount_amount_match.group(1).replace(",", "")
-            )
-        elif discount_line_match:
-            financials["discount"] = Decimal(
-                discount_line_match.group(1).replace(",", "")
-            )
-            if discount_line_match.group(2):
-                financials["discount_percentage"] = Decimal(
-                    discount_line_match.group(2)
-                )
+        discount_percent_patterns = [
+            r"Discount\s*\(?(\d+\.?\d*)%?\)?",
+            r"(\d+\.?\d*)%\s*[Dd]iscount",
+            r"Discount\s*Rate\s*:\s*(\d+\.?\d*)%",
+        ]
 
-        if discount_percent_match:
-            financials["discount_percentage"] = Decimal(discount_percent_match.group(1))
+        for pattern in discount_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if match.groups():
+                    amount_str = match.group(1).replace(",", "")
+                    try:
+                        financials["discount"] = Decimal(amount_str)
+                        print(f"💰 FOUND DISCOUNT AMOUNT: ${financials['discount']}")
+                        break
+                    except:
+                        continue
+
+        for pattern in discount_percent_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                percent_str = match.group(1)
+                try:
+                    financials["discount_percentage"] = Decimal(percent_str)
+                    print(
+                        f"💰 FOUND DISCOUNT PERCENTAGE: {financials['discount_percentage']}%"
+                    )
+                    break
+                except:
+                    continue
 
         shipping_match = re.search(
             r"Shipping:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE
@@ -149,6 +163,9 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
                     * financials["discount_percentage"]
                     / Decimal("100")
                 ).quantize(Decimal("0.01"))
+                print(
+                    f"💰 CALCULATED DISCOUNT FROM PERCENTAGE: ${financials['discount']}"
+                )
 
         if financials["discount_percentage"] == Decimal("0") and financials[
             "discount"
@@ -157,6 +174,39 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
                 financials["discount_percentage"] = (
                     (financials["discount"] / financials["subtotal"]) * Decimal("100")
                 ).quantize(Decimal("0.01"))
+                print(
+                    f"💰 CALCULATED DISCOUNT PERCENTAGE FROM AMOUNT: {financials['discount_percentage']}%"
+                )
+
+        calculated_total = (
+            financials["subtotal"]
+            - financials["discount"]
+            + financials["shipping"]
+            + financials["tax"]
+        )
+        if financials["final_total"] > Decimal("0") and financials[
+            "discount"
+        ] == Decimal("0"):
+            potential_discount = (
+                financials["subtotal"]
+                + financials["shipping"]
+                + financials["tax"]
+                - financials["final_total"]
+            )
+            if potential_discount > Decimal("0.01"):
+                financials["discount"] = potential_discount
+                if financials["subtotal"] > Decimal("0"):
+                    financials["discount_percentage"] = (
+                        (financials["discount"] / financials["subtotal"])
+                        * Decimal("100")
+                    ).quantize(Decimal("0.01"))
+                print(
+                    f"💰 INFERRED DISCOUNT FROM TOTALS: ${financials['discount']} ({financials['discount_percentage']}%)"
+                )
+
+        print(
+            f"💰 FINAL FINANCIALS: Subtotal=${financials['subtotal']}, Discount=${financials['discount']}, Discount%={financials['discount_percentage']}, Shipping=${financials['shipping']}, Tax=${financials['tax']}, Total=${financials['final_total']}"
+        )
 
         return financials
 
