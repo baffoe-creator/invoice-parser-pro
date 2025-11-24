@@ -178,23 +178,21 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
                     f"💰 CALCULATED DISCOUNT PERCENTAGE FROM AMOUNT: {financials['discount_percentage']}%"
                 )
 
-        calculated_total = (
-            financials["subtotal"]
-            - financials["discount"]
-            + financials["shipping"]
-            + financials["tax"]
+        calculated_total_before_discount = (
+            financials["subtotal"] + financials["shipping"] + financials["tax"]
         )
-        if financials["final_total"] > Decimal("0") and financials[
-            "discount"
-        ] == Decimal("0"):
+
+        if (
+            financials["final_total"] > Decimal("0")
+            and financials["discount"] == Decimal("0")
+            and calculated_total_before_discount > financials["final_total"]
+        ):
+
             potential_discount = (
-                financials["subtotal"]
-                + financials["shipping"]
-                + financials["tax"]
-                - financials["final_total"]
+                calculated_total_before_discount - financials["final_total"]
             )
             if potential_discount > Decimal("0.01"):
-                financials["discount"] = potential_discount
+                financials["discount"] = potential_discount.quantize(Decimal("0.01"))
                 if financials["subtotal"] > Decimal("0"):
                     financials["discount_percentage"] = (
                         (financials["discount"] / financials["subtotal"])
@@ -206,6 +204,9 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
 
         print(
             f"💰 FINAL FINANCIALS: Subtotal=${financials['subtotal']}, Discount=${financials['discount']}, Discount%={financials['discount_percentage']}, Shipping=${financials['shipping']}, Tax=${financials['tax']}, Total=${financials['final_total']}"
+        )
+        print(
+            f"💰 CALCULATION CHECK: (Subtotal ${financials['subtotal']} + Shipping ${financials['shipping']} + Tax ${financials['tax']}) - Discount ${financials['discount']} = ${(financials['subtotal'] + financials['shipping'] + financials['tax'] - financials['discount']).quantize(Decimal('0.01'))} vs Total ${financials['final_total']}"
         )
 
         return financials
