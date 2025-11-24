@@ -103,16 +103,30 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
             financials["subtotal"] = Decimal(subtotal_match.group(1).replace(",", ""))
 
         discount_amount_match = re.search(
-            r"Discount\s*\(?\d*%?\)?:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE
+            r"Discount\s*[^:\n]*:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE
         )
         discount_percent_match = re.search(
-            r"Discount\s*\((\d+)%\)", text, re.IGNORECASE
+            r"Discount\s*\(?(\d+\.?\d*)%?\)?", text, re.IGNORECASE
+        )
+        discount_line_match = re.search(
+            r"\$?([\d,]+\.\d{2})\s*\(?(\d+\.?\d*)%?\)?\s*[Dd]iscount",
+            text,
+            re.IGNORECASE,
         )
 
         if discount_amount_match:
             financials["discount"] = Decimal(
                 discount_amount_match.group(1).replace(",", "")
             )
+        elif discount_line_match:
+            financials["discount"] = Decimal(
+                discount_line_match.group(1).replace(",", "")
+            )
+            if discount_line_match.group(2):
+                financials["discount_percentage"] = Decimal(
+                    discount_line_match.group(2)
+                )
+
         if discount_percent_match:
             financials["discount_percentage"] = Decimal(discount_percent_match.group(1))
 
@@ -125,6 +139,24 @@ class PdfPlumberParser(BaseInvoiceParser, InvoiceParser):
         tax_match = re.search(r"Tax:\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE)
         if tax_match:
             financials["tax"] = Decimal(tax_match.group(1).replace(",", ""))
+
+        if financials["discount"] == Decimal("0") and financials[
+            "discount_percentage"
+        ] > Decimal("0"):
+            if financials["subtotal"] > Decimal("0"):
+                financials["discount"] = (
+                    financials["subtotal"]
+                    * financials["discount_percentage"]
+                    / Decimal("100")
+                ).quantize(Decimal("0.01"))
+
+        if financials["discount_percentage"] == Decimal("0") and financials[
+            "discount"
+        ] > Decimal("0"):
+            if financials["subtotal"] > Decimal("0"):
+                financials["discount_percentage"] = (
+                    (financials["discount"] / financials["subtotal"]) * Decimal("100")
+                ).quantize(Decimal("0.01"))
 
         return financials
 
