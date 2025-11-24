@@ -48,17 +48,18 @@ class InvoiceDataNormalizer:
 
         normalized["invoice_date"] = self._extract_invoice_date(raw_parsed_data)
 
-        normalized["subtotal"] = self._extract_numeric_field(
-            raw_parsed_data, "subtotal"
+        normalized["subtotal"] = self._safe_float(raw_parsed_data.get("subtotal", 0.0))
+
+        normalized["shipping_amount"] = self._safe_float(
+            raw_parsed_data.get("shipping_amount", 0.0)
         )
-        normalized["shipping_amount"] = self._extract_numeric_field(
-            raw_parsed_data, "shipping_amount"
+
+        normalized["tax_amount"] = self._safe_float(
+            raw_parsed_data.get("tax_amount", 0.0)
         )
-        normalized["tax_amount"] = self._extract_numeric_field(
-            raw_parsed_data, "tax_amount"
-        )
-        normalized["total_amount"] = self._extract_numeric_field(
-            raw_parsed_data, "total_amount"
+
+        normalized["total_amount"] = self._safe_float(
+            raw_parsed_data.get("total_amount", 0.0)
         )
 
         normalized["currency"] = self._extract_currency(raw_parsed_data)
@@ -67,6 +68,12 @@ class InvoiceDataNormalizer:
         normalized.update(line_items_data)
 
         normalized = self._validate_and_clean(normalized)
+
+        logger.info(f"💰 NORMALIZER EXTRACTED:")
+        logger.info(f"   subtotal: {normalized['subtotal']}")
+        logger.info(f"   shipping_amount: {normalized['shipping_amount']}")
+        logger.info(f"   tax_amount: {normalized['tax_amount']}")
+        logger.info(f"   total_amount: {normalized['total_amount']}")
 
         logger.info(
             f"📤 Normalized and mapped data: {self._sanitize_for_logging(normalized)}"

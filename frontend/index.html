@@ -1095,14 +1095,17 @@ function formatColumnName(column) {
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
 }
-
 function formatTableCell(value) {
     if (value === null || value === undefined || value === '') {
         return '-';
     }
     
+    // Handle zero values - show 0.00 instead of dash for amounts
+    if (value === 0 || value === 0.0) {
+        return '0.00';
+    }
+    
     if (typeof value === 'number' && (value.toString().includes('.') || value > 1000)) {
-        if (value === 0) return '0.00';
         return new Intl.NumberFormat('en-US', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
