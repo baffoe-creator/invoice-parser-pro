@@ -1091,17 +1091,36 @@ function exportTrackingReport() {
 }
 
 function formatColumnName(column) {
-    return column.split('_').map(word => 
+    const columnNames = {
+        'file_name': 'File Name',
+        'vendor': 'Vendor',
+        'invoice_number': 'Invoice Number',
+        'invoice_date': 'Invoice Date',
+        'subtotal': 'Subtotal',
+        'shipping_amount': 'Shipping Amount',
+        'tax_amount': 'Tax Amount',
+        'total_amount': 'Total Amount',
+        'currency': 'Currency',
+        'discount_amount': 'Discount Amount',
+        'discount_percentage': 'Discount Percentage',
+        'line_item_description': 'Line Item Description',
+        'line_item_quantity': 'Line Item Quantity',
+        'line_item_unit_price': 'Line Item Unit Price',
+        'line_item_amount': 'Line Item Amount',
+        'parsed_timestamp': 'Parsed Timestamp'
+    };
+    
+    return columnNames[column] || column.split('_').map(word => 
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
 }
+
 function formatTableCell(value) {
     if (value === null || value === undefined || value === '') {
         return '-';
     }
     
-    // Handle zero values - show 0.00 instead of dash for amounts
-    if (value === 0 || value === 0.0) {
+    if (value === 0 || value === 0.0 || value === '0' || value === '0.0') {
         return '0.00';
     }
     

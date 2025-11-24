@@ -35,6 +35,8 @@ class XLSXExporter:
             "tax_amount",
             "total_amount",
             "currency",
+            "discount_amount",
+            "discount_percentage",
             "line_item_description",
             "line_item_quantity",
             "line_item_unit_price",
@@ -87,6 +89,8 @@ class XLSXExporter:
             ["tax_amount", "Number", "Tax amount"],
             ["total_amount", "Number", "Total amount due"],
             ["currency", "Text", "Currency code (USD, EUR, etc)"],
+            ["discount_amount", "Number", "Discount amount applied"],
+            ["discount_percentage", "Number", "Discount percentage applied"],
             ["line_item_description", "Text", "Product/service description"],
             ["line_item_quantity", "Number", "Quantity of items"],
             ["line_item_unit_price", "Number", "Unit price per item"],
@@ -109,6 +113,8 @@ class XLSXExporter:
                 "shipping_amount",
                 "tax_amount",
                 "total_amount",
+                "discount_amount",
+                "discount_percentage",
                 "line_item_quantity",
                 "line_item_unit_price",
                 "line_item_amount",
@@ -189,6 +195,7 @@ class XLSXExporter:
                         "Earliest Date",
                         "Latest Date",
                         "Total Amount",
+                        "Total Discount",
                         "Last Updated",
                     ],
                     "Value": [
@@ -200,6 +207,12 @@ class XLSXExporter:
                             combined_df["total_amount"].sum()
                             if not combined_df.empty
                             and "total_amount" in combined_df.columns
+                            else 0
+                        ),
+                        (
+                            combined_df["discount_amount"].sum()
+                            if not combined_df.empty
+                            and "discount_amount" in combined_df.columns
                             else 0
                         ),
                         datetime.now().isoformat(),
@@ -220,6 +233,12 @@ class XLSXExporter:
                         ["tax_amount", "Number", "Tax amount"],
                         ["total_amount", "Number", "Total amount due"],
                         ["currency", "Text", "Currency code (USD, EUR, etc)"],
+                        ["discount_amount", "Number", "Discount amount applied"],
+                        [
+                            "discount_percentage",
+                            "Number",
+                            "Discount percentage applied",
+                        ],
                         [
                             "line_item_description",
                             "Text",
@@ -285,8 +304,11 @@ class XLSXExporter:
             df = pd.read_excel(self.xlsx_file_path, sheet_name="Invoice Data")
 
             total_amount = 0
+            total_discount = 0
             if "total_amount" in df.columns and not df.empty:
                 total_amount = float(df["total_amount"].sum())
+            if "discount_amount" in df.columns and not df.empty:
+                total_discount = float(df["discount_amount"].sum())
 
             return {
                 "exists": True,
@@ -295,6 +317,7 @@ class XLSXExporter:
                 "row_count": int(len(df)),
                 "columns": [str(col) for col in df.columns] if not df.empty else [],
                 "total_amount": total_amount,
+                "total_discount": total_discount,
                 "file_size": int(os.path.getsize(self.xlsx_file_path)),
             }
         except Exception as e:
