@@ -114,79 +114,70 @@ class XLSXExporter:
             self.data_dir, f"parsed_invoices_{self.session_id}.xlsx"
         )
         self.columns = [
+            "file_name",
             "vendor",
             "invoice_number",
             "invoice_date",
-            "due_date",
-            "subtotal_amount",
-            "discount_amount",
-            "discount_percentage",
+            "subtotal",
             "shipping_amount",
             "tax_amount",
             "total_amount",
             "currency",
-            "filename",
+            "line_item_description",
+            "line_item_quantity",
+            "line_item_unit_price",
+            "line_item_amount",
             "parsed_timestamp",
         ]
 
-    def append_invoice_data(self, invoice_data):
+    def append_normalized_data(self, normalized_data, filename):
         try:
             if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
                 return {"error": "pandas or openpyxl not available"}
 
+            print(f"📊 XLSX EXPORTER: Processing normalized data for {filename}")
+            print(f"💰 FINANCIAL DATA IN NORMALIZER:")
+            print(f"   subtotal: {normalized_data.get('subtotal')}")
+            print(f"   shipping_amount: {normalized_data.get('shipping_amount')}")
+            print(f"   tax_amount: {normalized_data.get('tax_amount')}")
+            print(f"   total_amount: {normalized_data.get('total_amount')}")
+
             row_data = {}
             for column in self.columns:
-                if column == "parsed_timestamp":
-                    row_data[column] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                elif column == "filename":
-                    row_data[column] = invoice_data.get("filename", "unknown")
-                else:
-                    normalized = invoice_data.get("normalized_data", {})
-                    parsed = invoice_data.get("parsed_data", {})
+                value = normalized_data.get(column)
 
-                    value = None
-                    if column in normalized and normalized[column] not in [
-                        None,
-                        "",
-                        "Unknown Date",
-                        "N/A",
-                    ]:
-                        value = normalized[column]
-                    elif column in parsed and parsed[column] not in [
-                        None,
-                        "",
-                        "Unknown Date",
-                        "N/A",
-                    ]:
-                        value = parsed[column]
-
-                    if column == "discount_percentage" and value:
-                        if isinstance(value, str) and "%" in value:
-                            value = float(value.replace("%", ""))
-
+                if value is None or value == "":
+                    row_data[column] = ""
+                elif isinstance(value, float):
                     row_data[column] = value
+                else:
+                    row_data[column] = str(value)
 
             if os.path.exists(self.xlsx_file_path):
-                existing_df = pd.read_excel(self.xlsx_file_path)
-                new_df = pd.DataFrame([row_data])
-                combined_df = pd.concat(
-                    [existing_df, new_df], ignore_index=True, sort=False
-                )
+                try:
+                    existing_df = pd.read_excel(self.xlsx_file_path)
+                    new_df = pd.DataFrame([row_data])
+
+                    for col in self.columns:
+                        if col not in existing_df.columns:
+                            existing_df[col] = ""
+                        if col not in new_df.columns:
+                            new_df[col] = ""
+
+                    combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    combined_df = combined_df[self.columns]
+                except Exception as e:
+                    print(f"⚠️ Error reading existing file, creating new: {e}")
+                    combined_df = pd.DataFrame([row_data], columns=self.columns)
             else:
-                combined_df = pd.DataFrame([row_data])
-
-            for column in self.columns:
-                if column not in combined_df.columns:
-                    combined_df[column] = None
-
-            combined_df = combined_df[self.columns]
+                combined_df = pd.DataFrame([row_data], columns=self.columns)
 
             combined_df.to_excel(self.xlsx_file_path, index=False, engine="openpyxl")
 
             return {
                 "success": True,
                 "message": "Data appended to XLSX file",
-                "filename": invoice_data.get("filename", "unknown"),
+                "filename": filename,
                 "file_path": self.xlsx_file_path,
                 "session_id": self.session_id,
             }
@@ -211,6 +202,7 @@ class XLSXExporter:
                 total_amount = (
                     float(df["total_amount"].sum())
                     if "total_amount" in df.columns
+                    and pd.api.types.is_numeric_dtype(df["total_amount"])
                     else 0
                 )
                 stats = {
@@ -553,7 +545,10 @@ async def get_xlsx_stats():
             "filename": os.path.basename(latest_file),
             "row_count": len(df),
             "total_amount": (
-                float(df["total_amount"].sum()) if "total_amount" in df.columns else 0
+                float(df["total_amount"].sum())
+                if "total_amount" in df.columns
+                and pd.api.types.is_numeric_dtype(df["total_amount"])
+                else 0
             ),
             "file_size": os.path.getsize(latest_file),
             "last_modified": os.path.getmtime(latest_file),
@@ -581,10 +576,26 @@ async def get_xlsx_data():
             raise HTTPException(status_code=404, detail="No Excel files found")
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
+
+        # Clean the data for display
+        cleaned_rows = []
+        for _, row in df.iterrows():
+            cleaned_row = {}
+            for col in df.columns:
+                value = row[col]
+                if pd.isna(value) or value == "":
+                    cleaned_row[col] = ""
+                elif isinstance(value, float):
+                    # Format float values to 2 decimal places
+                    cleaned_row[col] = round(value, 2) if value != 0 else 0.0
+                else:
+                    cleaned_row[col] = str(value)
+            cleaned_rows.append(cleaned_row)
+
         return {
             "filename": os.path.basename(latest_file),
             "columns": df.columns.tolist(),
-            "rows": df.fillna("").to_dict("records"),
+            "rows": cleaned_rows,
             "row_count": len(df),
             "file_size": os.path.getsize(latest_file),
             "last_modified": os.path.getmtime(latest_file),

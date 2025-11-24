@@ -1,14 +1,16 @@
 import os
+import tempfile
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 import datetime
 from typing import List, Dict, Any
 import logging
 
-import tempfile
 from src.infrastructure.repositories.supabase_repository import (
     SupabaseInvoiceRepository,
 )
+from src.infrastructure.parsers.pdfplumber_parser import PdfPlumberParser
+from src.application.services.data_normalizer import InvoiceDataNormalizer
 
 try:
     from src.xlsx_exporter import XLSXExporter
@@ -19,55 +21,139 @@ except ImportError as e:
     XLSX_AVAILABLE = False
     print(f"❌ XLSXExporter import failed: {e}")
 
-    class XLSXExporter:
-        def __init__(self, session_id: str = None):
-            self.session_id = session_id or "default"
-            print("⚠️ Using fallback XLSXExporter - Excel features disabled")
-
-        def append_normalized_data(self, data, filename):
-            return {
-                "success": False,
-                "error": "XLSX export not available - openpyxl missing",
-                "filename": filename,
-            }
-
-        def get_file_stats(self):
-            return {
-                "exists": False,
-                "error": "XLSX export not available - openpyxl missing",
-                "session_id": self.session_id,
-            }
-
-
 IMPORTS_AVAILABLE = True
 print("✅ Core imports available")
 
+pdfplumber_parser = PdfPlumberParser()
+data_normalizer = InvoiceDataNormalizer()
+
 
 class ParseInvoiceUseCase:
-    def __init__(self, parser, repo, file_handler):
+    def __init__(self, parser, repository, file_handler):
         self.parser = parser
-        self.repo = repo
+        self.repository = repository
         self.file_handler = file_handler
 
-    async def execute(self, file_content, filename, user_id):
+    async def execute(
+        self, file_content: bytes, filename: str, user_id: str
+    ) -> Dict[str, Any]:
         try:
-            parsed_data = self.parser.parse_invoice(file_content, filename)
-            if self.repo and self.repo.is_connected():
-                saved_id = self.repo.save(parsed_data, user_id, filename)
-            else:
-                saved_id = f"local_{hash(filename)}"
-                print("⚠️ Database not connected, using local ID")
-            return {
-                "success": True,
-                "parsed_data": parsed_data,
-                "saved_id": saved_id,
-            }
+            print(f"🔍 USE CASE: Starting execution for {filename}")
+
+            await self.file_handler.validate_file(file_content, filename)
+
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=".pdf"
+                ) as tmp_file:
+                    tmp_file.write(file_content)
+                    temp_path = tmp_file.name
+
+                print("🔍 USE CASE: Calling PdfPlumberParser...")
+                invoice_data = self.parser.parse(temp_path)
+
+                print(f"💰 PDFPLUMBER PARSER EXTRACTED:")
+                print(f"   vendor: {invoice_data.vendor}")
+                print(f"   invoice_number: {invoice_data.invoice_number}")
+                print(f"   subtotal: {invoice_data.subtotal}")
+                print(f"   shipping_amount: {invoice_data.shipping_amount}")
+                print(f"   tax_amount: {invoice_data.tax_amount}")
+                print(f"   total_amount: {invoice_data.total_amount}")
+                print(f"   discount_amount: {invoice_data.discount_amount}")
+
+                parsed_dict = {
+                    "vendor": invoice_data.vendor,
+                    "invoice_number": invoice_data.invoice_number,
+                    "invoice_date": invoice_data.invoice_date,
+                    "subtotal": float(invoice_data.subtotal),
+                    "shipping_amount": float(invoice_data.shipping_amount),
+                    "tax_amount": float(invoice_data.tax_amount),
+                    "total_amount": float(invoice_data.total_amount),
+                    "currency": invoice_data.currency,
+                    "discount_amount": float(invoice_data.discount_amount),
+                    "discount_percentage": float(invoice_data.discount_percentage),
+                    "line_items": [
+                        {
+                            "description": item.description,
+                            "quantity": float(item.quantity),
+                            "unit_price": float(item.unit_price),
+                            "amount": float(item.amount),
+                        }
+                        for item in invoice_data.line_items
+                    ],
+                    "raw_text": invoice_data.raw_text,
+                }
+
+                parsed_dict = self._clean_parsed_data(parsed_dict)
+
+                print("🔍 USE CASE: Saving to repository...")
+                invoice_id = self.repository.save(parsed_dict, user_id, filename)
+
+                return {
+                    "success": True,
+                    "invoice_id": invoice_id,
+                    "parsed_data": parsed_dict,
+                    "message": "Invoice parsed successfully",
+                }
+
+            except Exception as parse_error:
+                print(f"❌ USE CASE: Parser error: {str(parse_error)}")
+                import traceback
+
+                print(f"❌ Full traceback:\n{traceback.format_exc()}")
+                return {
+                    "success": False,
+                    "error": f"Parsing failed: {str(parse_error)}",
+                    "message": "Failed to parse invoice content",
+                }
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
+
         except Exception as e:
+            print(f"❌ USE CASE: General error: {str(e)}")
+            import traceback
+
+            print(f"❌ Full traceback:\n{traceback.format_exc()}")
             return {
                 "success": False,
-                "error": str(e),
-                "parsed_data": {},
+                "error": f"Processing failed: {str(e)}",
+                "message": "Failed to process invoice file",
             }
+
+    def _clean_parsed_data(self, parsed_dict: Dict[str, Any]) -> Dict[str, Any]:
+        financial_fields = [
+            "subtotal",
+            "shipping_amount",
+            "tax_amount",
+            "total_amount",
+            "discount_amount",
+            "discount_percentage",
+        ]
+        for field in financial_fields:
+            if field not in parsed_dict or parsed_dict[field] is None:
+                parsed_dict[field] = 0.0
+
+        if "line_items" not in parsed_dict:
+            parsed_dict["line_items"] = []
+
+        return parsed_dict
+
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+class SecureFileHandler:
+    async def validate_file(self, file_content, filename):
+        if len(file_content) > 10 * 1024 * 1024:
+            raise ValueError("File too large. Maximum size is 10MB.")
+        if not filename.lower().endswith(".pdf"):
+            raise ValueError("Only PDF files are supported.")
+        if not file_content.startswith(b"%PDF"):
+            raise ValueError("Invalid PDF file format.")
+        return True
 
 
 class SQLAlchemyInvoiceRepository:
@@ -88,186 +174,11 @@ class SQLAlchemyInvoiceRepository:
         return self.connected
 
 
-class SecureFileHandler:
-    async def validate_file(self, file_content, filename):
-        if len(file_content) > 10 * 1024 * 1024:
-            raise ValueError("File too large. Maximum size is 10MB.")
-        if not filename.lower().endswith(".pdf"):
-            raise ValueError("Only PDF files are supported.")
-        if not file_content.startswith(b"%PDF"):
-            raise ValueError("Invalid PDF file format.")
-        return True
-
-
-class InvoiceDataNormalizer:
-    def normalize(self, data, filename):
-        # Extract line items properly
-        line_items = data.get("line_items", [])
-        line_item_description = ""
-        line_item_quantity = 0.0
-        line_item_unit_price = 0.0
-        line_item_amount = 0.0
-
-        if line_items and len(line_items) > 0:
-            first_item = line_items[0]
-            line_item_description = first_item.get("description", "")
-            line_item_quantity = float(first_item.get("quantity", 0))
-            line_item_unit_price = float(first_item.get("unit_price", 0))
-            line_item_amount = float(first_item.get("amount", 0))
-
-        normalized = {
-            "file_name": filename,
-            "vendor": data.get("vendor", "Unknown Vendor"),
-            "invoice_number": data.get("invoice_number", "Unknown"),
-            "invoice_date": data.get("invoice_date", "Unknown Date"),
-            "subtotal": float(data.get("subtotal", 0)),
-            "shipping_amount": float(data.get("shipping_amount", 0)),
-            "tax_amount": float(data.get("tax_amount", 0)),
-            "total_amount": float(data.get("total_amount", 0)),
-            "currency": data.get("currency", "USD"),
-            "due_date": data.get("due_date", ""),
-            "discount_amount": float(data.get("discount_amount", 0)),
-            "discount_percentage": float(data.get("discount_percentage", 0)),
-            "line_item_description": line_item_description,
-            "line_item_quantity": line_item_quantity,
-            "line_item_unit_price": line_item_unit_price,
-            "line_item_amount": line_item_amount,
-            "parsed_timestamp": datetime.datetime.now().isoformat(),
-        }
-
-        print(
-            f"📊 NORMALIZER OUTPUT - Total: {normalized['total_amount']}, Tax: {normalized['tax_amount']}, Shipping: {normalized['shipping_amount']}"
-        )
-        return normalized
-
-
-class PdfPlumberParser:
-    def parse_invoice(self, file_content, filename):
-        try:
-            import pdfplumber
-            import tempfile
-            import os
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                tmp_file.write(file_content)
-                tmp_file_path = tmp_file.name
-
-            extracted_data = {}
-
-            try:
-                with pdfplumber.open(tmp_file_path) as pdf:
-                    full_text = ""
-                    for page in pdf.pages:
-                        text = page.extract_text()
-                        if text:
-                            full_text += text + "\n"
-
-                    extracted_data = {
-                        "vendor": self._extract_vendor(full_text),
-                        "invoice_number": self._extract_invoice_number(full_text),
-                        "invoice_date": self._extract_date(full_text),
-                        "total_amount": self._extract_total(full_text),
-                        "currency": "USD",
-                        "raw_text": full_text[:500],
-                        "filename": filename,
-                    }
-
-            finally:
-                os.unlink(tmp_file_path)
-
-            return extracted_data
-
-        except Exception as e:
-            print(f"PDF parsing error: {e}")
-            return {
-                "vendor": "Unknown Vendor",
-                "invoice_number": "Unknown",
-                "invoice_date": "Unknown",
-                "total_amount": 0.0,
-                "currency": "USD",
-                "error": str(e),
-                "filename": filename,
-            }
-
-    def _extract_vendor(self, text):
-        lines = text.split("\n")
-        for line in lines[:10]:
-            line = line.strip()
-            if line and len(line) > 2 and len(line) < 100:
-                return line
-        return "Unknown Vendor"
-
-    def _extract_invoice_number(self, text):
-        import re
-
-        patterns = [
-            r"Invoice\s*#?\s*:?\s*([A-Z0-9-]+)",
-            r"Invoice\s*Number\s*:?\s*([A-Z0-9-]+)",
-            r"INV-?(\d+)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        return "Unknown"
-
-    def _extract_date(self, text):
-        import re
-
-        patterns = [
-            r"Date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
-            r"Invoice\s*Date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        return "Unknown Date"
-
-    def _extract_total(self, text):
-        import re
-
-        patterns = [
-            r"Total\s*:?\s*\$?(\d+[.,]\d+)",
-            r"Amount\s*Due\s*:?\s*\$?(\d+[.,]\d+)",
-            r"Balance\s*Due\s*:?\s*\$?(\d+[.,]\d+)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                try:
-                    return float(match.group(1).replace(",", ""))
-                except:
-                    continue
-        return 0.0
-
-
-data_normalizer = InvoiceDataNormalizer()
-
-router = APIRouter()
-logger = logging.getLogger(__name__)
-
-
 def get_invoice_repository():
     database_url = os.getenv("DATABASE_URL")
-
     if not database_url:
-        user = os.getenv("PGUSER") or os.getenv("user")
-        password = os.getenv("PGPASSWORD") or os.getenv("password")
-        host = os.getenv("PGHOST") or os.getenv("host")
-        port = os.getenv("PGPORT") or os.getenv("port") or "5432"
-        dbname = (
-            os.getenv("PGDATABASE")
-            or os.getenv("dbname")
-            or os.getenv("database")
-            or "postgres"
-        )
-
-        if all([user, password, host]):
-            database_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
-        else:
-            print("⚠️ Database credentials not complete, using fallback repository")
-            return SQLAlchemyInvoiceRepository("fallback")
+        print("⚠️ Database credentials not complete, using fallback repository")
+        return SQLAlchemyInvoiceRepository("fallback")
 
     try:
         return SupabaseInvoiceRepository(database_url)
@@ -285,7 +196,7 @@ def get_xlsx_exporter() -> XLSXExporter:
 
 
 def get_invoice_parser():
-    return PdfPlumberParser()
+    return pdfplumber_parser
 
 
 @router.post("/parse")
@@ -311,14 +222,11 @@ async def parse_invoice(
                 status_code=500, detail=parsed_result.get("error", "Parsing failed")
             )
 
-        # Use the comprehensive XLSXExporter from xlsx_exporter.py
-        from src.xlsx_exporter import XLSXExporter
-
-        xlsx_exporter = XLSXExporter()
-
         normalized_data = data_normalizer.normalize(
             parsed_result["parsed_data"], filename
         )
+
+        xlsx_exporter = XLSXExporter()
         export_result = xlsx_exporter.append_normalized_data(normalized_data, filename)
 
         return {
