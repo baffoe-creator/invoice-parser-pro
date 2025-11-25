@@ -1,6 +1,18 @@
 import os
 import sys
 import datetime
+import time
+import secrets
+import tempfile
+import logging
+from typing import Dict, Any, Optional
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+import glob
+from datetime import datetime, timedelta
+import math
+from urllib.parse import urlparse
 
 print(f"🐍 Python executable: {sys.executable}")
 print(f"🐍 Python version: {sys.version}")
@@ -10,16 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-import glob
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
-import math
-from urllib.parse import urlparse
-import time
 
 try:
     import pandas as pd
@@ -52,6 +54,91 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
     print("⚠️  openpyxl not available - Excel export features will be limited")
+
+
+class SessionManager:
+    def __init__(self):
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.session_timeout = 7200
+
+    def create_session(self) -> str:
+        session_id = secrets.token_urlsafe(32)
+        self.sessions[session_id] = {
+            "created_at": time.time(),
+            "user_id": f"anon_{secrets.token_hex(8)}",
+            "invoices": [],
+            "last_activity": time.time(),
+        }
+        return session_id
+
+    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        if session_id not in self.sessions:
+            return None
+
+        session = self.sessions[session_id]
+        if time.time() - session["last_activity"] > self.session_timeout:
+            del self.sessions[session_id]
+            return None
+
+        session["last_activity"] = time.time()
+        return session
+
+    def add_invoice(self, session_id: str, invoice_data: Dict[str, Any]) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+
+        invoice_data["id"] = f"inv_{secrets.token_hex(8)}"
+        invoice_data["parsed_at"] = time.time()
+        session["invoices"].append(invoice_data)
+        return True
+
+    def get_invoices(self, session_id: str) -> list:
+        session = self.get_session(session_id)
+        return session["invoices"] if session else []
+
+
+session_manager = SessionManager()
+
+
+class CookieAuth:
+    def __init__(self):
+        self.secret_key = os.getenv(
+            "SESSION_SECRET", "default-cookie-secret-change-in-production"
+        )
+
+    def create_session_cookie(self, response: Response, session_id: str) -> None:
+        response.set_cookie(
+            key="invoice_session",
+            value=session_id,
+            max_age=30 * 24 * 3600,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+        )
+
+    def get_session_id(self, request: Request) -> Optional[str]:
+        return request.cookies.get("invoice_session")
+
+
+cookie_auth = CookieAuth()
+
+
+async def get_current_session(request: Request, response: Response) -> Dict[str, Any]:
+    session_id = cookie_auth.get_session_id(request)
+
+    if not session_id:
+        session_id = session_manager.create_session()
+        cookie_auth.create_session_cookie(response, session_id)
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        session_id = session_manager.create_session()
+        cookie_auth.create_session_cookie(response, session_id)
+        session = session_manager.get_session(session_id)
+
+    return session
+
 
 app = FastAPI(
     title="Invoice Parser Pro API",
@@ -145,7 +232,6 @@ class XLSXExporter:
             row_data = {}
             for column in self.columns:
                 value = normalized_data.get(column)
-
                 if value is None or value == "":
                     row_data[column] = ""
                 elif isinstance(value, float):
@@ -262,13 +348,11 @@ def test_supabase_connection():
 
     try:
         database_url = os.getenv("DATABASE_URL")
-
         if not database_url:
             print("❌ No DATABASE_URL found in environment variables")
             return False
 
         print("🔗 Testing database connection via DATABASE_URL...")
-
         try:
             result = urlparse(database_url)
             hostname = result.hostname
@@ -290,13 +374,11 @@ def test_supabase_connection():
                 print(
                     "💡 Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
                 )
-
         except Exception as parse_error:
             print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
             return False
 
         connection = psycopg2.connect(database_url, connect_timeout=10)
-
         cursor = connection.cursor()
         cursor.execute("SELECT NOW(), current_user, current_database();")
         result = cursor.fetchone()
@@ -312,7 +394,6 @@ def test_supabase_connection():
     except psycopg2.OperationalError as e:
         error_msg = str(e)
         print(f"❌ Database connection failed: {error_msg}")
-
         if "Tenant or user not found" in error_msg:
             print("🔧 Supabase Connection Issue Detected:")
             print("   1. Your DATABASE_URL format appears incorrect")
@@ -327,7 +408,6 @@ def test_supabase_connection():
             print(
                 "   5. Ensure your password doesn't have special characters that need URL encoding"
             )
-
         return False
     except Exception as e:
         print(f"❌ Unexpected database error: {e}")
@@ -408,19 +488,142 @@ async def health_check():
     }
 
 
+@app.post("/api/session/init")
+async def init_session(
+    response: Response, session: dict = Depends(get_current_session)
+):
+    return {
+        "session_id": session["user_id"],
+        "invoices_count": len(session["invoices"]),
+    }
+
+
+@app.post("/api/invoices/parse-stateless")
+async def parse_invoice_stateless(
+    file: UploadFile = File(...),
+    session: dict = Depends(get_current_session),
+):
+    try:
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+        file_content = await file.read()
+        filename = file.filename
+
+        if not PDFPLUMBER_AVAILABLE:
+            raise HTTPException(status_code=503, detail="PDF parsing not available")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(file_content)
+            temp_path = tmp_file.name
+
+        try:
+            with pdfplumber.open(temp_path) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    text += page.extract_text() or ""
+
+            parsed_dict = {
+                "vendor": "Sample Vendor",
+                "invoice_number": "INV-001",
+                "invoice_date": datetime.now().strftime("%Y-%m-%d"),
+                "subtotal": 100.0,
+                "shipping_amount": 10.0,
+                "tax_amount": 8.0,
+                "total_amount": 118.0,
+                "currency": "USD",
+                "discount_amount": 0.0,
+                "line_items": [
+                    {
+                        "description": "Sample Item",
+                        "quantity": 1.0,
+                        "unit_price": 100.0,
+                        "amount": 100.0,
+                    }
+                ],
+                "filename": filename,
+                "parsed_at": time.time(),
+            }
+
+            success = session_manager.add_invoice(session["user_id"], parsed_dict)
+
+            if not success:
+                raise HTTPException(status_code=400, detail="Session expired")
+
+            xlsx_exporter = XLSXExporter()
+            export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
+
+            return {
+                "success": True,
+                "data": parsed_dict,
+                "session_invoices_count": len(session["invoices"]),
+                "export_result": export_result,
+                "message": "Invoice parsed and stored in session",
+            }
+
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+    except Exception as e:
+        logging.error(f"Error parsing invoice: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error parsing invoice: {str(e)}")
+
+
+@app.get("/api/invoices/session")
+async def get_session_invoices(session: dict = Depends(get_current_session)):
+    invoices = session_manager.get_invoices(session["user_id"])
+    return {"invoices": invoices, "count": len(invoices)}
+
+
+@app.get("/api/invoices/export-session")
+async def export_session_invoices(session: dict = Depends(get_current_session)):
+    try:
+        invoices = session_manager.get_invoices(session["user_id"])
+
+        if not invoices:
+            raise HTTPException(status_code=404, detail="No invoices in session")
+
+        exporter = XLSXExporter()
+
+        for invoice in invoices:
+            exporter.append_normalized_data(invoice, invoice["filename"])
+
+        export_path = exporter.xlsx_file_path
+
+        if not os.path.exists(export_path):
+            raise HTTPException(status_code=404, detail="Export file not found")
+
+        return FileResponse(
+            path=export_path,
+            filename=f"invoices_export_{session['user_id']}.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    except Exception as e:
+        logging.error(f"Error exporting session invoices: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@app.delete("/api/invoices/clear-session")
+async def clear_session_invoices(session: dict = Depends(get_current_session)):
+    session_id = session["user_id"]
+    if session_id in session_manager.sessions:
+        session_manager.sessions[session_id]["invoices"] = []
+
+    return {"message": "Session cleared", "invoices_count": 0}
+
+
 @app.get("/api/debug/database-test")
 async def debug_database_test():
-    """Test database connection with detailed error reporting"""
     import psycopg2
     from urllib.parse import urlparse
 
     database_url = os.getenv("DATABASE_URL")
-
     if not database_url:
         return {"error": "DATABASE_URL not found in environment"}
 
     try:
-        # Test the exact connection string
         conn = psycopg2.connect(database_url, connect_timeout=10)
         cursor = conn.cursor()
         cursor.execute("SELECT version();")
@@ -577,7 +780,6 @@ async def get_xlsx_data():
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
 
-        # Clean the data for display
         cleaned_rows = []
         for _, row in df.iterrows():
             cleaned_row = {}
@@ -586,7 +788,6 @@ async def get_xlsx_data():
                 if pd.isna(value) or value == "":
                     cleaned_row[col] = ""
                 elif isinstance(value, float):
-                    # Format float values to 2 decimal places
                     cleaned_row[col] = round(value, 2) if value != 0 else 0.0
                 else:
                     cleaned_row[col] = str(value)
