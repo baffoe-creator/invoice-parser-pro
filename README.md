@@ -1,293 +1,329 @@
-# 📄 Invoice Parser Pro
+# Invoice Parser Pro
 
-> *Transform the chaos of paper invoices into structured, actionable intelligence.*
+Transform paper invoices into structured, actionable data with enterprise-grade precision.
 
 ## 📋 Overview
 
-Invoice Parser Pro is an enterprise-grade document intelligence platform that liberates finance teams from the tedium of manual data entry. By leveraging advanced PDF parsing algorithms, this production-ready FastAPI application extracts critical financial data from invoices with precision, enabling organizations to redirect valuable human capital toward strategic initiatives rather than repetitive transcription tasks.
+Invoice Parser Pro is a production-ready document processing platform that extracts structured financial data from PDF invoices. Built on FastAPI with a **stateless, zero-persistence architecture**, it delivers reliable invoice parsing without the operational overhead of traditional database-backed systems.
 
-Whether processing a single vendor invoice or orchestrating bulk imports from multiple suppliers, Invoice Parser Pro delivers structured Excel exports that integrate seamlessly into existing financial workflows—transforming hours of manual work into seconds of automated processing.
+Finance teams can process individual invoices or batch operations with equal efficiency, exporting results to Excel for seamless integration with existing accounting workflows and ERP systems.
+
+**Privacy-First Design**: Your invoice data is processed in-memory and immediately discarded. No database, no persistent storage, no data retention concerns.
 
 ## ✨ Core Value Proposition
 
-**Time Reclamation**: What typically consumes hours of manual entry and verification now executes in mere seconds, allowing finance professionals to focus on analysis and decision-making rather than data transcription.
+**Accelerated Processing**: Reduce manual data entry from hours to seconds while maintaining accuracy.
 
-**Accuracy Assurance**: Eliminate the human error inherent in manual data entry. Each invoice is parsed with algorithmic consistency, ensuring reliable data for downstream financial operations.
+**Operational Simplicity**: Zero database configuration or maintenance required—deploy and start processing immediately.
 
-**Workflow Integration**: Export to Excel format provides immediate compatibility with existing accounting systems, ERP platforms, and financial reporting tools—no complex integrations required.
+**Privacy Assurance**: Stateless architecture ensures sensitive financial data is never persisted. Process, export, done.
 
-**Scalability**: Process individual invoices during ad-hoc needs or batch-process hundreds during month-end reconciliation. The architecture scales gracefully with your operational demands.
+**Enterprise Reliability**: Robust error handling and validation ensure consistent results across diverse invoice formats.
 
-**Real-Time Intelligence**: The integrated Invoice Tracking Dashboard transforms static invoice data into dynamic receivables management, providing visibility into payment pipelines, cash flow forecasts, and collections health metrics.
+**Immediate Integration**: Excel export format works directly with existing financial systems and reporting tools.
+
+**Cost Efficiency**: No database hosting fees, no backup storage costs, no scaling bottlenecks.
 
 ## 🎯 Key Features
 
-### Intelligent Document Parsing
-- **Multi-Field Extraction**: Automatically identifies and extracts vendor information, invoice numbers, dates, line items, subtotals, taxes, discounts, and total amounts
-- **Line Item Recognition**: Parses complex invoice tables with multiple products, quantities, and pricing structures
-- **Currency Detection**: Identifies and captures currency information for international invoice processing
+### Intelligent Document Processing
 
-### Flexible Processing Modes
-- **Single File Upload**: Perfect for immediate, one-off invoice processing needs
-- **Bulk Processing**: Upload and parse multiple PDFs simultaneously, ideal for batch reconciliation operations
-- **Drag-and-Drop Interface**: Intuitive user experience eliminates friction in the upload process
+- Extract vendor details, invoice numbers, dates, and financial amounts with precision
+- Parse complex line items with quantity, pricing, and description data
+- Handle diverse invoice layouts, discount calculations, and international currency formats
+- Automatic detection of subtotals, taxes, shipping, and total amounts
 
-### Excel Export & Analysis
-- **Structured Data Export**: All parsed invoices automatically compile into well-formatted Excel spreadsheets
-- **Data Viewer**: In-browser Excel data visualization provides immediate insights without downloading
-- **Session Management**: Organized file management with unique session identifiers for tracking and auditing
+### Flexible Processing Workflows
 
-### Invoice Tracking Dashboard
-- **Payment Status Pipeline**: Visual kanban-style pipeline tracking invoices through sent, viewed, due, and overdue stages
-- **Collections Health Metrics**: Real-time scoring of receivables health with color-coded alerts
-- **Cash Flow Calendar**: 30-day forecast showing expected payment dates and amounts
-- **Client Reliability Indicators**: Track payment behaviors and identify high-risk accounts
-- **Outstanding Balance Monitoring**: Aggregate view of total receivables across all statuses
+- **Single-file processing** for immediate needs
+- **Bulk operations** for monthly reconciliation and batch imports
+- **Drag-and-drop interface** with real-time validation and progress tracking
+- **Session-based organization** with automatic cleanup after expiration
 
-### Production-Ready Architecture
-- **RESTful API**: Clean, documented endpoints built with FastAPI for high performance
-- **Authentication System**: Secure token-based authentication protecting sensitive financial data
-- **CORS Support**: Configured for secure cross-origin requests in modern web architectures
-- **SQLAlchemy Integration**: Robust database abstraction layer for data persistence
-- **Error Handling**: Comprehensive exception management with detailed logging
+### Excel Integration
 
-## 🚀 Getting Started
+- Structured data exports compatible with accounting systems
+- In-browser data preview and analysis
+- Comprehensive field mapping (14+ data points per invoice)
+- Download on-demand without server-side persistence
+
+### Receivables Management
+
+- Visual payment pipeline tracking (sent, viewed, due, overdue)
+- Collections health scoring and risk assessment
+- 30-day cash flow forecasting calendar
+- Client reliability indicators and outstanding balance monitoring
+
+## 🏗️ Architecture
+
+### Technical Stack
+
+- **Backend**: FastAPI with async processing capabilities
+- **Data Handling**: Pandas for Excel generation and data manipulation
+- **PDF Processing**: pdfplumber for reliable text extraction
+- **Authentication**: Secure HTTP-only cookie-based sessions
+- **Frontend**: Vanilla JavaScript with responsive design
+
+### Design Principles
+
+**Stateless Operation**: Session-based processing eliminates database dependencies and persistent storage risks
+
+**Zero Persistence**: Invoice data exists only during processing (seconds), then vanishes completely
+
+**Horizontal Scalability**: Deploy additional instances without database coordination or connection pooling
+
+**Graceful Degradation**: Robust fallback mechanisms maintain service availability under various conditions
+
+**Security by Design**: Can't leak data that isn't stored, can't breach records that don't exist
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-```bash
-Python 3.8+
-pip (Python package manager)
-```
+- Python 3.8+
+- No database installation required
 
 ### Installation
 
-1. **Clone the repository**
 ```bash
 git clone https://github.com/yourusername/invoice-parser-pro.git
 cd invoice-parser-pro
-```
-
-2. **Create and activate virtual environment**
-```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**
-```bash
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Configure environment variables**
+### Configuration
+
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+# Generate secure session key
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Create .env file
+cat > .env << EOF
+SECRET_KEY=your-generated-key-here
+FRONTEND_URL=https://your-domain.com
+SESSION_MAX_AGE=7200
+SECURE_COOKIES=true
+EOF
 ```
 
-5. **Initialize the database**
-```bash
-python -m src.infrastructure.repositories.sqlalchemy_repo
-```
+### Run Application
 
-### Running the Application
-
-**Start the backend server:**
 ```bash
 python main.py
 ```
 
-The API will be available at `http://localhost:8000`
+Access the application at `http://localhost:8000`
 
-**Access the frontend:**
-Open `http://localhost:8000` in your browser or serve the HTML file through your preferred web server.
+## 📖 Usage
 
-## 📖 Usage Guide
+### Processing Invoices
 
-### Single Invoice Processing
+1. Upload PDF invoices via drag-and-drop interface
+2. Parse with single click—no account creation required
+3. Review extracted data in structured format
+4. Export to Excel for accounting system integration
 
-1. Navigate to the **Single File** tab
-2. Click the upload area or drag-and-drop your PDF invoice
-3. Click **Parse Invoice** to initiate processing
-4. Review extracted data in the results panel
-5. Download the Excel export for integration into your workflow
+### Tracking & Analytics
 
-### Bulk Invoice Processing
+1. Monitor payment status through visual pipeline
+2. Track collections health and cash flow projections
+3. Update invoice status as payments progress
+4. Export comprehensive tracking reports
 
-1. Switch to the **Bulk Upload** tab
-2. Select multiple PDF files (Ctrl/Cmd + Click for multiple selection)
-3. Review the file list to confirm your selection
-4. Click **Parse All Invoices** to process the batch
-5. Monitor the progress and review the success/failure summary
+### Session Management
 
-### Excel Data Analysis
+- Sessions automatically created on first request (anonymous)
+- 2-hour expiration with auto-renewal on activity
+- All session data purged after expiration
+- No signup, no tracking, no identity verification
 
-1. Navigate to the **Excel Viewer** tab
-2. Click **Refresh Data** to load the latest parsed invoices
-3. Analyze statistics including total invoices, data fields, and file information
-4. Browse the complete dataset in the interactive table
-5. Download the Excel file for external analysis
+## 🔐 Security & Compliance
 
-### Invoice Tracking & Receivables Management
+### Security Features
 
-1. Open the **Invoice Tracking** tab
-2. Review the Collections Health score and outstanding balance
-3. Monitor the Payment Status Pipeline to identify bottlenecks
-4. Examine the Cash Flow Calendar for upcoming payment expectations
-5. Update invoice statuses as payments progress
-6. Export tracking reports for management presentations
+- **HTTP-only cookies** for session management (XSS protection)
+- **HMAC-signed sessions** prevent tampering
+- **File type validation** and size limits
+- **CORS configuration** for controlled cross-origin access
+- **No persistent storage** of sensitive financial data
 
-## 🏗️ Architecture
+### Compliance Benefits
 
-### Backend Stack
-- **FastAPI**: High-performance async web framework
-- **SQLAlchemy**: ORM for database operations
-- **Pandas**: Data manipulation and Excel generation
-- **PyPDF2/pdfplumber**: PDF content extraction
-- **Python-dotenv**: Environment configuration management
+- **GDPR Friendly**: No personal data collection or retention
+- **SOC 2 Simplified**: No sensitive data persistence = fewer audit controls
+- **Right to Erasure**: Already compliant—nothing to erase
+- **Data Minimization**: Process only what's needed, discard everything else
 
-### Frontend Stack
-- **Vanilla JavaScript**: Lightweight, dependency-free client-side logic
-- **HTML5 & CSS3**: Modern, responsive user interface
-- **Fetch API**: Asynchronous HTTP communication
+### What We Don't Store
 
-### Project Structure
-```
-invoice-parser-pro/
-├── main.py                          # Application entry point
-├── src/
-│   ├── api/
-│   │   ├── endpoints/              # API route handlers
-│   │   └── dependencies.py         # Dependency injection
-│   ├── domain/                     # Business logic layer
-│   ├── infrastructure/
-│   │   └── repositories/           # Data persistence
-│   └── xlsx_exporter.py            # Excel export functionality
-├── data/                           # Processed invoice storage
-├── frontend/                       # Web interface assets
-└── requirements.txt                # Python dependencies
-```
+- Invoice PDFs (processed in-memory only)
+- Vendor information
+- Financial amounts
+- Line item details
+- User accounts or PII
+- Processing history beyond current session
 
-## 🔐 Security Considerations
-
-- **Authentication Required**: All parsing endpoints require valid JWT tokens
-- **File Validation**: Only PDF files are accepted, preventing malicious uploads
-- **CORS Configuration**: Restricted to specified origins for enhanced security
-- **Environment Variables**: Sensitive configuration isolated from codebase
-- **Input Sanitization**: All user inputs are validated before processing
-
-## 🛠️ API Endpoints
+## 🛠️ API Reference
 
 ### Authentication
+
 ```
-POST /api/auth/demo-login
+POST /api/auth/anonymous-session    # Create anonymous session
+POST /api/auth/logout               # Clear session cookie
 ```
 
 ### Invoice Processing
+
 ```
-POST /api/invoices/parse           # Single file upload
-POST /api/invoices/bulk             # Multiple file upload
+POST /api/invoices/parse            # Single file upload
+POST /api/invoices/bulk             # Batch processing
 ```
 
 ### Excel Export
+
 ```
 GET  /api/export/xlsx               # Export metadata
 GET  /api/export/download-xlsx      # Download Excel file
-GET  /api/invoices/xlsx/data        # Retrieve Excel data (JSON)
-GET  /api/invoices/xlsx/stats       # Get export statistics
+GET  /api/invoices/xlsx/data        # Retrieve data as JSON
+GET  /api/invoices/xlsx/stats       # Processing statistics
 ```
 
 ### Invoice Tracking
+
 ```
 GET  /api/invoices/tracking/dashboard        # Full dashboard data
 POST /api/invoices/tracking/update-status    # Update invoice status
-GET  /api/invoices/tracking/health-metrics   # Collections health data
 ```
 
-### Health & Diagnostics
+### Health Monitoring
+
 ```
+GET  /                              # API info and feature status
 GET  /health                        # Service health check
-GET  /api/debug/routes              # List all routes (dev)
-GET  /api/debug/files               # List data directory files (dev)
 ```
 
-## 🎨 User Interface Features
+## 🔧 Configuration Reference
 
-- **Animated Background**: Engaging, modern aesthetic with subtle motion design
-- **Drag-and-Drop Upload**: Intuitive file selection with visual feedback
-- **Progress Indicators**: Real-time feedback during processing operations
-- **Responsive Design**: Seamless experience across desktop and tablet devices
-- **Status Visualization**: Color-coded indicators for quick status recognition
-- **Interactive Tables**: Sortable, scrollable data tables for large datasets
-- **Tab Navigation**: Organized feature access through clean tab interface
+### Environment Variables
 
-## 📊 Data Export Format
+```bash
+# Required
+SECRET_KEY=<cryptographically-secure-random-key>
 
-The Excel exports contain the following fields:
-
-| Field | Description |
-|-------|-------------|
-| **vendor** | Supplier or vendor name |
-| **invoice_number** | Unique invoice identifier |
-| **invoice_date** | Date of invoice issuance |
-| **subtotal** | Pre-tax total amount |
-| **tax_amount** | Calculated tax charges |
-| **discount_amount** | Applied discount value |
-| **discount_percentage** | Discount rate percentage |
-| **shipping_amount** | Delivery/shipping charges |
-| **total_amount** | Final invoice total |
-| **currency** | Currency code (USD, EUR, etc.) |
-| **line_items** | Detailed product/service breakdown |
-
-## 🔧 Configuration
-
-Key configuration options in `.env`:
-
-```env
-DATABASE_URL=sqlite:///./invoices.db
-API_HOST=0.0.0.0
-API_PORT=8000
-JWT_SECRET_KEY=your-secret-key-here
-LOG_LEVEL=info
+# Optional
+SESSION_MAX_AGE=7200              # Session timeout in seconds (default: 2 hours)
+FRONTEND_URL=https://your-app.com # CORS configuration
+SECURE_COOKIES=true               # HTTPS-only cookies (production)
+COOKIE_DOMAIN=.your-domain.com    # Cookie scope
 ```
 
-## 🐛 Troubleshooting
+### Deployment Options
 
-**Authentication Failures**
-- Ensure the demo login endpoint is accessible
-- Verify CORS settings match your frontend origin
-- Check that tokens are properly stored and transmitted
+**Render / Railway / Fly.io**
+- No database addon required
+- Set `FRONTEND_URL` environment variable
+- Build: `pip install -r requirements.txt`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
-**File Processing Errors**
-- Confirm PDFs are not password-protected or encrypted
-- Validate PDF structure is machine-readable (not scanned images)
-- Check server logs for detailed error messages
-
-**Excel Export Issues**
-- Verify the `data/` directory exists and is writable
-- Ensure sufficient disk space for export generation
-- Check file permissions on the data directory
+**Docker**
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
 
  
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**PDF Processing Fails**
+- Ensure documents are text-based PDFs (not image scans)
+- Verify PDF is not password-protected or encrypted
+- Check file size is reasonable (<10MB recommended)
+
+**Session Timeouts**
+- Adjust `SESSION_MAX_AGE` for longer processing windows
+- Sessions auto-renew on activity
+- Clear browser cookies to reset session
+
+**Export Errors**
+- Verify write permissions in `data/` directory (auto-created)
+- Ensure sufficient disk space for temporary files
+- Files auto-cleanup after session expiration
+
+### Performance Optimization
+
+- For high-volume processing, increase `SESSION_MAX_AGE`
+- Monitor memory usage during bulk operations (Pandas loads Excel in RAM)
+- Consider horizontal scaling for enterprise workloads
+- Use CDN for frontend assets in production
+
+## 📊 Data Schema
+
+### Excel Export Fields
+
+| Field                 | Type    | Description                        |
+|-----------------------|---------|------------------------------------|
+| `vendor`              | string  | Supplier or vendor name            |
+| `invoice_number`      | string  | Unique invoice identifier          |
+| `invoice_date`        | date    | Invoice issuance date              |
+| `due_date`            | date    | Payment due date                   |
+| `subtotal`            | decimal | Pre-tax/discount total             |
+| `tax_amount`          | decimal | Calculated tax charges             |
+| `discount_amount`     | decimal | Applied discount value             |
+| `discount_percentage` | decimal | Discount rate percentage           |
+| `shipping_amount`     | decimal | Delivery/shipping charges          |
+| `total_amount`        | decimal | Final invoice total                |
+| `currency`            | string  | Currency code (USD, EUR, etc.)     |
+| `line_item_*`         | mixed   | Itemized products/services         |
+| `parsed_timestamp`    | datetime| Processing timestamp               |
+| `file_name`           | string  | Original PDF filename              |
+
 ## 🤝 Contributing
 
-Contributions are welcomed and appreciated. Please follow these steps:
+We welcome contributions that enhance processing accuracy, expand format support, or improve user experience.
+
+### Development Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/yourusername/invoice-parser-pro.git
+cd invoice-parser-pro
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run tests
+pytest
+
+# Start development server
+uvicorn main:app --reload
+```
+
+### Contribution Guidelines
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
- ## 🙏 Acknowledgments
+ 
+*Invoice Parser Pro - Because your time is valuable, and your data is nobody's business but yours.*
 
-- FastAPI community for exceptional documentation and framework design
-- The open-source Python ecosystem for robust parsing libraries
-- Finance professionals whose feedback shaped the feature roadmap
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
 
  
 ---
 
-**Built with ❤️ for finance teams everywhere**
-
-*Invoice Parser Pro - Because your time is worth more than data entry.*
+**Status**: Production Ready | **Version**: 1.0.0 | **Last Updated**: November 2025
