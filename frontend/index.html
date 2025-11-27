@@ -466,6 +466,31 @@
             border-radius: 0 0 8px 8px;
             min-height: 100px;
         }
+
+        /* Scrollable file results */
+        .file-results-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .file-results-summary {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .scrollable-table {
+            margin-bottom: 0;
+        }
+
+        .scrollable-table table {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
@@ -730,6 +755,26 @@ const invoiceList = document.getElementById('invoiceList');
 const noTrackingData = document.getElementById('noTrackingData');
 
 let selectedFiles = [];
+
+async function initSession() {
+  const response = await fetch('/api/session/init', {
+    method: 'POST',
+    credentials: 'include'
+  });
+  return response.json();
+}
+
+async function parseInvoice(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const response = await fetch('/api/invoices/parse-stateless', {
+    method: 'POST',
+    body: formData,
+    credentials: 'include'
+  });
+  return response.json();
+}
 
 function switchTab(tabName) {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -1376,9 +1421,28 @@ function displayBulkResults(data) {
     `;
     
     if (data.detailed_results) {
-        let lineItemsHTML = '<h3 style="margin-bottom: 12px;">File Results</h3><table><thead><tr><th>Filename</th><th>Status</th><th>Details</th></tr></thead><tbody>';
+        const totalFiles = data.detailed_results.length;
+        const displayCount = 10; // Show first 10 files with option to scroll for more
         
-        data.detailed_results.forEach(result => {
+        let lineItemsHTML = `
+            <h3 style="margin-bottom: 12px;">File Results</h3>
+            <div class="file-results-summary">
+                Showing ${Math.min(displayCount, totalFiles)} of ${totalFiles} files - scroll to see more
+            </div>
+            <div class="file-results-container">
+                <table class="scrollable-table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        // Show only first few results to avoid overwhelming UI
+        data.detailed_results.slice(0, displayCount).forEach(result => {
             lineItemsHTML += `
                 <tr>
                     <td>${result.filename}</td>
@@ -1388,7 +1452,19 @@ function displayBulkResults(data) {
             `;
         });
         
-        lineItemsHTML += '</tbody></table>';
+        // If there are more files, add a summary row
+        if (totalFiles > displayCount) {
+            const remaining = totalFiles - displayCount;
+            lineItemsHTML += `
+                <tr>
+                    <td colspan="3" style="text-align: center; background: #f8f9fa; font-style: italic;">
+                        ... and ${remaining} more file${remaining > 1 ? 's' : ''}. Scroll up to see all results.
+                    </td>
+                </tr>
+            `;
+        }
+        
+        lineItemsHTML += '</tbody></table></div>';
         lineItems.innerHTML = lineItemsHTML;
     }
     
