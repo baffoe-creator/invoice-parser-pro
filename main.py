@@ -139,7 +139,6 @@ async def get_current_session(request: Request, response: Response) -> Dict[str,
 
     return session
 
-
 app = FastAPI(
     title="Invoice Parser Pro API",
     description="Production-ready PDF invoice parsing service",
@@ -659,7 +658,6 @@ async def demo_login():
         print(f"Using fallback auth: {e}")
         return {"access_token": "demo_token_12345", "token_type": "bearer"}
 
-
 try:
     from src.api.endpoints import invoices
 
@@ -667,6 +665,13 @@ try:
     print("✅ Invoice routes loaded successfully")
 except Exception as e:
     print(f"❌ Could not load invoice routes: {e}")
+
+try:
+    from api.invoices_v2 import router as invoices_v2_router
+    app.include_router(invoices_v2_router)
+    print("✅ v2 Invoice routes loaded successfully")
+except Exception as e:
+    print(f"❌ Could not load v2 invoice routes: {e}")
 
 
 @app.get("/api/export/xlsx")
@@ -1107,3 +1112,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    
