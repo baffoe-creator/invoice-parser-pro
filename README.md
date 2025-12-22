@@ -2,236 +2,224 @@
 
 Transform paper invoices into structured, actionable data with enterprise-grade precision.
 
-## 📋 Overview
-
-Invoice Parser Pro is a production-ready document processing platform that extracts structured financial data from PDF invoices. Built on FastAPI with a **stateless, zero-persistence architecture**, it delivers reliable invoice parsing without the operational overhead of traditional database-backed systems.
+## Overview
+Invoice Parser Pro is a production-ready document processing platform that extracts structured financial data from PDF invoices. Built on FastAPI with a stateless, zero-persistence architecture, it delivers reliable invoice parsing without the operational overhead of traditional database-backed systems.
 
 Finance teams can process individual invoices or batch operations with equal efficiency, exporting results to Excel for seamless integration with existing accounting workflows and ERP systems.
 
 Live Demo: https://invoice-parser-proo.onrender.com/
 
-**Privacy-First Design**: Your invoice data is processed in-memory and immediately discarded. No database, no persistent storage, no data retention concerns.
+Privacy-First Design: Invoice data is processed in-memory and discarded immediately. No database, no persistent storage, no data retention concerns.
 
+## Core Value Proposition
+- Accelerated Processing: Reduce manual data entry from hours to seconds while maintaining accuracy.
+- Operational Simplicity: Zero database configuration or maintenance required—deploy and start processing immediately.
+- Privacy Assurance: Stateless architecture ensures sensitive financial data is never persisted.
+- Enterprise Reliability: Robust error handling and validation ensure consistent results across diverse invoice formats.
+- Immediate Integration: Excel export format works directly with existing financial systems and reporting tools.
+- Cost Efficiency: No database hosting fees, no backup storage costs, no scaling bottlenecks.
 
-## ✨ Core Value Proposition
-
-**Accelerated Processing**: Reduce manual data entry from hours to seconds while maintaining accuracy.
-
-**Operational Simplicity**: Zero database configuration or maintenance required—deploy and start processing immediately.
-
-**Privacy Assurance**: Stateless architecture ensures sensitive financial data is never persisted. Process, export, done.
-
-**Enterprise Reliability**: Robust error handling and validation ensure consistent results across diverse invoice formats.
-
-**Immediate Integration**: Excel export format works directly with existing financial systems and reporting tools.
-
-**Cost Efficiency**: No database hosting fees, no backup storage costs, no scaling bottlenecks.
-
-## 🎯 Key Features
-
+## Key Features
 ### Intelligent Document Processing
+- Extract vendor details, invoice numbers, dates, and financial amounts with precision.
+- Parse complex line items with quantity, pricing, and description data.
+- Handle diverse invoice layouts, discounts, and international currency formats.
+- Automatic detection of subtotals, taxes, shipping, and total amounts.
 
-- Extract vendor details, invoice numbers, dates, and financial amounts with precision
-- Parse complex line items with quantity, pricing, and description data
-- Handle diverse invoice layouts, discount calculations, and international currency formats
-- Automatic detection of subtotals, taxes, shipping, and total amounts
+### Processing Endpoints & Workflows
+- POST `/api/v2/invoices/parse` — upload and parse a single invoice.
+- POST `/api/v2/invoices/bulk` — batch processing for monthly reconciliation and imports.
+- PATCH `/api/v2/invoices/{invoice_id}/fields/{field}` — apply manual corrections.
+- POST `/api/v2/invoices/{invoice_id}/webhook` — enqueue webhook deliveries for downstream systems.
+- POST `/api/v2/invoices/{invoice_id}/approve` — approve and export an invoice (returns Excel or presigned URL).
 
-### Flexible Processing Workflows
+These API endpoints are designed for easy integration into existing pipelines and automation scripts.
 
-- **Single-file processing** for immediate needs
-- **Bulk operations** for monthly reconciliation and batch imports
-- **Drag-and-drop interface** with real-time validation and progress tracking
-- **Session-based organization** with automatic cleanup after expiration
+### Background Processing & Queueing
+- RQ-based worker architecture with Redis as the queue backend for webhook delivery and export tasks.
+- Retry, backoff and visibility on failed deliveries are included.
+- Workers are designed to run either as local processes during development or as containerized services in production.
 
-### Excel Integration
+### Excel Export & Data Handling
+- In-memory Excel generation using Pandas and openpyxl with streaming download support.
+- Detailed Excel schema covering vendor, invoice metadata, line items and timestamps.
+- Option to export to S3 via presigned URLs for large exports or archival workflows.
 
-- Structured data exports compatible with accounting systems
-- In-browser data preview and analysis
-- Comprehensive field mapping (14+ data points per invoice)
-- Download on-demand without server-side persistence
+### Stateless Session Handling
+- Anonymous, HTTP-only cookie sessions with configurable timeout and automatic cleanup.
+- Session data is kept in memory and removed after expiry, avoiding database dependencies.
+- Designed for horizontal scaling: add instances without database coordination.
 
-### Receivables Management
+### Integration & Developer Experience
+- Local Redis support via Docker (`redis:7`) for simple dev setup.
+- Docker Compose configuration available for orchestrating app + worker + Redis.
+- WSL + Docker guidance for Windows developers and Remote - WSL workflow in VS Code.
+- Commands and example scripts included in the Quick Start section below.
 
-- Visual payment pipeline tracking (sent, viewed, due, overdue)
-- Collections health scoring and risk assessment
-- 30-day cash flow forecasting calendar
-- Client reliability indicators and outstanding balance monitoring
-
-## 🏗️ Architecture
-
+## Architecture
 ### Technical Stack
-
-- **Backend**: FastAPI with async processing capabilities
-- **Data Handling**: Pandas for Excel generation and data manipulation
-- **PDF Processing**: pdfplumber for reliable text extraction
-- **Authentication**: Secure HTTP-only cookie-based sessions
-- **Frontend**: Vanilla JavaScript with responsive design
+- Backend: FastAPI (async)  
+- Data Handling: Pandas (Excel generation)  
+- PDF Processing: pdfplumber (text extraction)  
+- Queue: Redis + RQ (background jobs)  
+- Authentication: HTTP-only cookie-based anonymous sessions (HMAC signed)  
+- Frontend: Vanilla JavaScript (responsive)
 
 ### Design Principles
+- Stateless Operation: Session-based processing avoids persistent storage risks.  
+- Zero Persistence: Invoice data exists only for the duration of processing and is discarded afterwards.  
+- Horizontal Scalability: Add instances without DB coordination.  
+- Graceful Degradation: Fallbacks to maintain availability under load.  
+- Security by Design: Reduces attack surface by not persisting sensitive data.
 
-**Stateless Operation**: Session-based processing eliminates database dependencies and persistent storage risks
-
-**Zero Persistence**: Invoice data exists only during processing (seconds), then vanishes completely
-
-**Horizontal Scalability**: Deploy additional instances without database coordination or connection pooling
-
-**Graceful Degradation**: Robust fallback mechanisms maintain service availability under various conditions
-
-**Security by Design**: Can't leak data that isn't stored, can't breach records that don't exist
-
-## 🚀 Quick Start
-
+## Quick Start (local development)
 ### Prerequisites
+- Python 3.8+ (3.12 recommended)  
+- Docker Desktop (WSL2 integration for Windows) or a Redis instance  
+- Git  
+- (Optional) VS Code with Remote - WSL for Windows development
 
-- Python 3.8+
-- No database installation required
+### Setup (Recommended: WSL / Linux)
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/invoice-parser-pro.git
+   cd invoice-parser-pro
+   ```
 
-### Installation
+2. (Optional for Windows) copy the project into the WSL filesystem for best performance:
+   ```
+   mkdir -p ~/projects
+   cp -r /mnt/c/Users/<your-windows-user>/invoice-parser-pro ~/projects/
+   cd ~/projects/invoice-parser-pro
+   ```
 
-```bash
-git clone https://github.com/yourusername/invoice-parser-pro.git
-cd invoice-parser-pro
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+3. Create and activate a virtual environment:
+   ```
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+4. Install dependencies:
+   ```
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   # Ensure the needed extras for local dev
+   pip install redis rq requests pandas openpyxl python-dotenv uvicorn fastapi
+   ```
+
+5. Start Redis (Docker):
+   ```
+   docker run -d --name invoice-redis -p 6379:6379 redis:7
+   docker exec -it invoice-redis redis-cli PING   # expect: PONG
+   ```
+
+6. Create a `.env` file in the project root:
+   ```
+   REDIS_URL=redis://localhost:6379/0
+   SECRET_KEY=your-generated-key
+   ENABLE_S3=false
+   ```
+
+7. Start the application (terminal #1):
+   ```
+   python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+8. Start an RQ worker (terminal #2):
+   ```
+   source .venv/bin/activate
+   rq worker webhooks --url redis://localhost:6379/0
+   ```
+
+9. Test a parse (terminal #3):
+   ```
+   curl -F "file=@/path/to/test.pdf" http://localhost:8000/api/v2/invoices/parse
+   ```
+
+### Docker Compose (optional)
+If you prefer an all-container dev environment, a `docker-compose.yml` is supported in the repository to orchestrate app, worker and Redis. Start with:
 ```
-
-### Configuration
-
-```bash
-# Generate secure session key
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# Create .env file
-cat > .env << EOF
-SECRET_KEY=your-generated-key-here
-FRONTEND_URL=https://your-domain.com
-SESSION_MAX_AGE=7200
-SECURE_COOKIES=true
-EOF
+docker compose up --build
 ```
+This runs the app, worker, and Redis in containers and is suitable for reproducible local testing and staging.
 
-### Run Application
-
-```bash
-python main.py
-```
-
-Access the application at `http://localhost:8000`
-
-## 📖 Usage
-
+## Usage
 ### Processing Invoices
-
-1. Upload PDF invoices via drag-and-drop interface
-2. Parse with single click—no account creation required
-3. Review extracted data in structured format
-4. Export to Excel for accounting system integration
+- Upload PDF invoices via the web interface or the `/api/v2/invoices/parse` endpoint.  
+- Review parsed data and apply manual patches via the PATCH endpoint.  
+- Enqueue webhook deliveries for downstream systems.  
+- Approve invoices for Excel export or download.
 
 ### Tracking & Analytics
-
-1. Monitor payment status through visual pipeline
-2. Track collections health and cash flow projections
-3. Update invoice status as payments progress
-4. Export comprehensive tracking reports
+- Visual pipeline for invoice status (sent / viewed / due / overdue).  
+- Collections health scoring and 30-day cash flow forecasting.  
+- Exportable tracking reports for accounting and collections teams.
 
 ### Session Management
+- Anonymous sessions created on first request.  
+- Default expiration: 2 hours (configurable via `SESSION_MAX_AGE`).  
+- Session data is purged after expiration; no signup is required.
 
-- Sessions automatically created on first request (anonymous)
-- 2-hour expiration with auto-renewal on activity
-- All session data purged after expiration
-- No signup, no tracking, no identity verification
-
-## 🔐 Security & Compliance
-
+## Security & Compliance
 ### Security Features
-
-- **HTTP-only cookies** for session management (XSS protection)
-- **HMAC-signed sessions** prevent tampering
-- **File type validation** and size limits
-- **CORS configuration** for controlled cross-origin access
-- **No persistent storage** of sensitive financial data
+- HTTP-only cookies for session management.  
+- HMAC-signed sessions to prevent tampering.  
+- File type validation and size limits.  
+- CORS configuration for controlled cross-origin access.  
+- No persistent storage of invoice data by default.
 
 ### Compliance Benefits
+- GDPR-friendly: minimized processing and no data retention.  
+- Reduced audit surface: no persistent sensitive data stored.  
+- Right to Erasure: nothing to erase in persistent storage.
 
-- **GDPR Friendly**: No personal data collection or retention
-- **SOC 2 Simplified**: No sensitive data persistence = fewer audit controls
-- **Right to Erasure**: Already compliant—nothing to erase
-- **Data Minimization**: Process only what's needed, discard everything else
-
-### What We Don't Store
-
-- Invoice PDFs (processed in-memory only)
-- Vendor information
-- Financial amounts
-- Line item details
-- User accounts or PII
-- Processing history beyond current session
-
-## 🛠️ API Reference
-
+## API Reference (overview)
 ### Authentication
-
-```
-POST /api/auth/anonymous-session    # Create anonymous session
-POST /api/auth/logout               # Clear session cookie
-```
+- POST `/api/auth/anonymous-session` — create anonymous session  
+- POST `/api/auth/logout` — clear session cookie
 
 ### Invoice Processing
-
-```
-POST /api/invoices/parse            # Single file upload
-POST /api/invoices/bulk             # Batch processing
-```
+- POST `/api/v2/invoices/parse` — single file upload  
+- POST `/api/v2/invoices/bulk` — batch processing
 
 ### Excel Export
-
-```
-GET  /api/export/xlsx               # Export metadata
-GET  /api/export/download-xlsx      # Download Excel file
-GET  /api/invoices/xlsx/data        # Retrieve data as JSON
-GET  /api/invoices/xlsx/stats       # Processing statistics
-```
+- GET `/api/export/xlsx` — export metadata  
+- GET `/api/export/download-xlsx` — download Excel file  
+- GET `/api/invoices/xlsx/data` — retrieve data as JSON  
+- GET `/api/invoices/xlsx/stats` — processing statistics
 
 ### Invoice Tracking
-
-```
-GET  /api/invoices/tracking/dashboard        # Full dashboard data
-POST /api/invoices/tracking/update-status    # Update invoice status
-```
+- GET `/api/invoices/tracking/dashboard` — dashboard data  
+- POST `/api/invoices/tracking/update-status` — update invoice status
 
 ### Health Monitoring
+- GET `/` — API info and feature status  
+- GET `/health` — service health check
 
-```
-GET  /                              # API info and feature status
-GET  /health                        # Service health check
-```
-
-## 🔧 Configuration Reference
-
+## Configuration Reference
 ### Environment Variables
+Required:
+- `SECRET_KEY` — cryptographically secure random key
 
-```bash
-# Required
-SECRET_KEY=<cryptographically-secure-random-key>
+Optional:
+- `SESSION_MAX_AGE` — seconds (default: 7200)  
+- `FRONTEND_URL` — CORS origin  
+- `SECURE_COOKIES` — true/false  
+- `REDIS_URL` — Redis connection string  
+- `COOKIE_DOMAIN` — cookie scope
 
-# Optional
-SESSION_MAX_AGE=7200              # Session timeout in seconds (default: 2 hours)
-FRONTEND_URL=https://your-app.com # CORS configuration
-SECURE_COOKIES=true               # HTTPS-only cookies (production)
-COOKIE_DOMAIN=.your-domain.com    # Cookie scope
+### Deployment
+- Deploy to Render, Railway, Fly.io, or any container host.  
+- No database addon required.  
+- Set `FRONTEND_URL` and `REDIS_URL` in environment.  
+- Start command example:
+  ```
+  uvicorn main:app --host 0.0.0.0 --port $PORT
+  ```
+
+### Docker
+Example Dockerfile pattern:
 ```
-
-### Deployment Options
-
-**Render / Railway / Fly.io**
-- No database addon required
-- Set `FRONTEND_URL` environment variable
-- Build: `pip install -r requirements.txt`
-- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-
-**Docker**
-```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
@@ -240,93 +228,52 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
- 
-## 🐛 Troubleshooting
-
+## Troubleshooting
 ### Common Issues
+- PDF processing fails: ensure documents are text-based (not scanned images). Use OCR before parsing if needed.  
+- Session timeouts: increase `SESSION_MAX_AGE`.  
+- Export errors: verify write permissions for temporary files and available disk space.
 
-**PDF Processing Fails**
-- Ensure documents are text-based PDFs (not image scans)
-- Verify PDF is not password-protected or encrypted
-- Check file size is reasonable (<10MB recommended)
+### Performance
+- For high-volume processing, horizontally scale instances and monitor memory (Pandas uses RAM).  
+- Use hosted Redis when running multiple instances in production.  
+- Serve static assets via CDN in production.
 
-**Session Timeouts**
-- Adjust `SESSION_MAX_AGE` for longer processing windows
-- Sessions auto-renew on activity
-- Clear browser cookies to reset session
+## Data Schema
+Excel Export Fields (examples)
+- vendor (string) — supplier or vendor name  
+- invoice_number (string)  
+- invoice_date (date)  
+- due_date (date)  
+- subtotal (decimal)  
+- tax_amount (decimal)  
+- discount_amount (decimal)  
+- shipping_amount (decimal)  
+- total_amount (decimal)  
+- currency (string)  
+- line_item_* (mixed)  
+- parsed_timestamp (datetime)  
+- file_name (string)
 
-**Export Errors**
-- Verify write permissions in `data/` directory (auto-created)
-- Ensure sufficient disk space for temporary files
-- Files auto-cleanup after session expiration
-
-### Performance Optimization
-
-- For high-volume processing, increase `SESSION_MAX_AGE`
-- Monitor memory usage during bulk operations (Pandas loads Excel in RAM)
-- Consider horizontal scaling for enterprise workloads
-- Use CDN for frontend assets in production
-
-## 📊 Data Schema
-
-### Excel Export Fields
-
-| Field                 | Type    | Description                        |
-|-----------------------|---------|------------------------------------|
-| `vendor`              | string  | Supplier or vendor name            |
-| `invoice_number`      | string  | Unique invoice identifier          |
-| `invoice_date`        | date    | Invoice issuance date              |
-| `due_date`            | date    | Payment due date                   |
-| `subtotal`            | decimal | Pre-tax/discount total             |
-| `tax_amount`          | decimal | Calculated tax charges             |
-| `discount_amount`     | decimal | Applied discount value             |
-| `discount_percentage` | decimal | Discount rate percentage           |
-| `shipping_amount`     | decimal | Delivery/shipping charges          |
-| `total_amount`        | decimal | Final invoice total                |
-| `currency`            | string  | Currency code (USD, EUR, etc.)     |
-| `line_item_*`         | mixed   | Itemized products/services         |
-| `parsed_timestamp`    | datetime| Processing timestamp               |
-| `file_name`           | string  | Original PDF filename              |
-
-## 🤝 Contributing
-
-We welcome contributions that enhance processing accuracy, expand format support, or improve user experience.
+## Contributing
+We welcome contributions that improve parsing accuracy, add format support, or enhance usability.
 
 ### Development Setup
-
-```bash
-# Clone and setup
+```
 git clone https://github.com/yourusername/invoice-parser-pro.git
 cd invoice-parser-pro
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-# Run tests
 pytest
-
-# Start development server
 uvicorn main:app --reload
 ```
 
-### Contribution Guidelines
+### Contribution Workflow
+- Fork the repository  
+- Create a feature branch: `git checkout -b feature/amazing-feature`  
+- Commit changes: `git commit -m "Add amazing feature"`  
+- Push and open a Pull Request
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
- 
-*Invoice Parser Pro - Because your time is valuable, and your data is nobody's business but yours.*
-
----
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) file for details.
-
- 
----
-
-**Status**: Production Ready | **Version**: 1.0.0 | **Last Updated**: November 2025
+## License
+MIT License - See LICENSE file for details.
