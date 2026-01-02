@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import glob
 from datetime import datetime, timedelta
 import math
@@ -464,6 +464,36 @@ async def root():
             "excel_export_available": OPENPYXL_AVAILABLE,
         },
     }
+
+
+@app.get("/share/{page_slug}")
+async def share_page(page_slug: str, request: Request):
+    title = "Invoice Parser Pro"
+    desc = "Parse PDF invoices into structured data and export to Excel."
+    base_url = "https://invoice-parser-pro.example.com"
+    if os.getenv("RENDER_EXTERNAL_URL"):
+        base_url = os.getenv("RENDER_EXTERNAL_URL")
+    elif request.base_url:
+        base_url = str(request.base_url).rstrip('/')
+    
+    url = f"{base_url}/share/{page_slug}"
+    
+    html_content = f"""<!doctype html>
+<html><head>
+  <title>{title}</title>
+  <meta name="description" content="{desc}">
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{desc}">
+  <meta property="og:url" content="{url}">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="{base_url}">
+</head><body>
+  <h1>{title}</h1>
+  <p>{desc}</p>
+  <p><a href="{base_url}">Try Invoice Parser Pro</a></p>
+</body></html>"""
+    
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/health")
@@ -1112,4 +1142,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
