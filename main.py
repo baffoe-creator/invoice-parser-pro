@@ -470,11 +470,9 @@ async def root():
 async def share_page(page_slug: str, request: Request):
     title = "Invoice Parser Pro"
     desc = "Parse PDF invoices into structured data and export to Excel."
-    base_url = "https://invoice-parser-pro.example.com"
+    base_url = "https://invoice-parser-pro.onrender.com"
     if os.getenv("RENDER_EXTERNAL_URL"):
-        base_url = os.getenv("RENDER_EXTERNAL_URL")
-    elif request.base_url:
-        base_url = str(request.base_url).rstrip('/')
+        base_url = os.getenv("RENDER_EXTERNAL_URL").rstrip('/')
     
     url = f"{base_url}/share/{page_slug}"
     
@@ -494,7 +492,6 @@ async def share_page(page_slug: str, request: Request):
 </body></html>"""
     
     return HTMLResponse(content=html_content)
-
 
 @app.get("/health")
 async def health_check():

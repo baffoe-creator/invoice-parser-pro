@@ -1,8 +1,7 @@
-# save as generate_sitemap.py
 urls = [
-  "https://invoice-parser-proo.onrender.com/",
-  "https://invoice-parser-proo.onrender.com/share/zapier",
-  "https://invoice-parser-proo.onrender.com/share/google-sheets",
+  "https://invoice-parser-proo.onrender.com/",   
+  "https://invoice-parser-pro.onrender.com/share/zapier",
+  "https://invoice-parser-pro.onrender.com/share/google-sheets",
 ]
 
 xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
@@ -12,4 +11,4 @@ xml += "</urlset>"
 
 with open("static/sitemap.xml", "w") as f:
     f.write(xml)
-print("✅ Sitemap generated for FRONTEND at static/sitemap.xml")
+print("✅ Sitemap updated with correct URLs")
