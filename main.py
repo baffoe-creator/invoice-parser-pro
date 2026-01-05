@@ -490,8 +490,20 @@ async def share_page(page_slug: str, request: Request):
   <p>{desc}</p>
   <p><a href="{base_url}">Try Invoice Parser Pro</a></p>
 </body></html>"""
+
     
     return HTMLResponse(content=html_content)
+
+@app.get("/sitemap.xml")
+async def get_sitemap():
+    return FileResponse("static/sitemap.xml", media_type="application/xml")
+
+@app.get("/robots.txt")
+async def get_robots():
+    robots_content = """User-agent: *
+Allow: /
+Sitemap: https://invoice-parser-pro.onrender.com/sitemap.xml"""
+    return Response(content=robots_content, media_type="text/plain")
 
 @app.get("/health")
 async def health_check():
