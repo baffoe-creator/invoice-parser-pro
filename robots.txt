@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://invoice-parser-proo.onrender.com/sitemap.xml
