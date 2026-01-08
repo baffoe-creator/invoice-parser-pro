@@ -13,6 +13,9 @@ import glob
 from datetime import datetime, timedelta
 import math
 from urllib.parse import urlparse
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
 
 print(f"🐍 Python executable: {sys.executable}")
 print(f"🐍 Python version: {sys.version}")
@@ -189,6 +192,29 @@ app.add_middleware(
 )
 
 _initialized = False
+
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+INDEX_PATH = FRONTEND_DIR / "index.html"
+
+if (FRONTEND_DIR / "static").exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
+
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    # fallback to API info if frontend is missing
+    return await api_info()
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    # Let API, share, sitemap, robots and static paths be handled by their own routes
+    if full_path.startswith("api") or full_path.startswith("share") or full_path.startswith("sitemap.xml") or full_path.startswith("robots.txt") or full_path.startswith("static"):
+        raise HTTPException(status_code=404)
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    return await api_info()
 
 
 class XLSXExporter:
@@ -451,8 +477,8 @@ async def initialize_middleware(request, call_next):
     return response
 
 
-@app.get("/")
-async def root():
+@app.get("/api/info", tags=["info"])
+async def api_info():
     return {
         "message": "Invoice Parser Pro API is running",
         "status": "healthy",
@@ -502,7 +528,7 @@ async def get_sitemap():
 async def get_robots():
     robots_content = """User-agent: *
 Allow: /
-Sitemap: https://invoice-parser-pro.onrender.com/sitemap.xml"""
+Sitemap: https://invoice-parser-pro-o.onrender.com/sitemap.xml"""
     return Response(content=robots_content, media_type="text/plain")
 
 @app.get("/health")
