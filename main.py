@@ -193,28 +193,6 @@ app.add_middleware(
 
 _initialized = False
 
-BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR / "frontend"
-INDEX_PATH = FRONTEND_DIR / "index.html"
-
-if (FRONTEND_DIR / "static").exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
-
-@app.get("/", include_in_schema=False)
-async def serve_index():
-    if INDEX_PATH.exists():
-        return FileResponse(str(INDEX_PATH))
-    # fallback to API info if frontend is missing
-    return await api_info()
-
-@app.get("/{full_path:path}", include_in_schema=False)
-async def spa_fallback(full_path: str):
-    # Let API, share, sitemap, robots and static paths be handled by their own routes
-    if full_path.startswith("api") or full_path.startswith("share") or full_path.startswith("sitemap.xml") or full_path.startswith("robots.txt") or full_path.startswith("static"):
-        raise HTTPException(status_code=404)
-    if INDEX_PATH.exists():
-        return FileResponse(str(INDEX_PATH))
-    return await api_info()
 
 
 class XLSXExporter:
@@ -1171,6 +1149,29 @@ async def debug_database():
         result["connection_test"]["error"] = "psycopg2 not available"
 
     return result
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+INDEX_PATH = FRONTEND_DIR / "index.html"
+
+if (FRONTEND_DIR / "static").exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
+
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    # fallback to API info if frontend is missing
+    return await api_info()
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    # Let API, share, sitemap, robots and static paths be handled by their own routes
+    if full_path.startswith("api") or full_path.startswith("share") or full_path.startswith("sitemap.xml") or full_path.startswith("robots.txt") or full_path.startswith("static"):
+        raise HTTPException(status_code=404)
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    return await api_info()
+
 
 
 if __name__ == "__main__":
