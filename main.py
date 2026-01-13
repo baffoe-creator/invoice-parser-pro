@@ -5,8 +5,9 @@ import time
 import secrets
 import tempfile
 import logging
-from typing import Dict, Any, Optional
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response
+import uuid
+from typing import Dict, Any, Optional, List
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import glob
@@ -71,6 +72,8 @@ class SessionManager:
             "user_id": f"anon_{secrets.token_hex(8)}",
             "invoices": [],
             "last_activity": time.time(),
+            "datasets": [],  # Add datasets list to session
+            "last_dataset_id": None,  # Track latest dataset
         }
         return session_id
 
@@ -99,6 +102,51 @@ class SessionManager:
     def get_invoices(self, session_id: str) -> list:
         session = self.get_session(session_id)
         return session["invoices"] if session else []
+
+    # Dataset support methods
+    def create_dataset(self, session_id: str, kind: str, files: list, parsed_result: dict) -> Optional[str]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+        ds = {
+            "id": dataset_id,
+            "kind": kind,  # 'single' or 'bulk'
+            "files": files,
+            "created_at": time.time(),
+            "parsed_result": parsed_result,  # store minimal structure for UI
+            "pinned": False,
+        }
+        session.setdefault("datasets", []).append(ds)
+        # optional: update a default pointer to latest dataset
+        session["last_dataset_id"] = dataset_id
+        return dataset_id
+
+    def list_datasets(self, session_id: str) -> list:
+        session = self.get_session(session_id)
+        return session.get("datasets", []) if session else []
+
+    def get_dataset(self, session_id: str, dataset_id: str) -> Optional[dict]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        for ds in session.get("datasets", []):
+            if ds["id"] == dataset_id:
+                return ds
+        return None
+
+    def delete_dataset(self, session_id: str, dataset_id: str) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        datasets = session.get("datasets", [])
+        new_ds = [d for d in datasets if d["id"] != dataset_id]
+        if len(new_ds) == len(datasets):
+            return False
+        session["datasets"] = new_ds
+        if session.get("last_dataset_id") == dataset_id:
+            session["last_dataset_id"] = new_ds[-1]["id"] if new_ds else None
+        return True
 
 
 session_manager = SessionManager()
@@ -377,9 +425,9 @@ def test_supabase_connection():
                 print(
                     "💡 Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
                 )
-        except Exception as parse_error:
-            print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
-            return False
+            except Exception as parse_error:
+                print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
+                return False
 
         connection = psycopg2.connect(database_url, connect_timeout=10)
         cursor = connection.cursor()
@@ -592,12 +640,21 @@ async def parse_invoice_stateless(
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
 
+            # Create dataset for this parse
+            dataset_id = session_manager.create_dataset(
+                session_id=session["user_id"],
+                kind="single",
+                files=[filename],
+                parsed_result=parsed_dict
+            )
+            
             xlsx_exporter = XLSXExporter()
             export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
 
             return {
                 "success": True,
                 "data": parsed_dict,
+                "dataset_id": dataset_id,  # Return dataset ID
                 "session_invoices_count": len(session["invoices"]),
                 "export_result": export_result,
                 "message": "Invoice parsed and stored in session",
@@ -654,6 +711,28 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
         session_manager.sessions[session_id]["invoices"] = []
 
     return {"message": "Session cleared", "invoices_count": 0}
+
+
+# Dataset APIs
+@app.get("/api/invoices/datasets")
+async def list_datasets(session: dict = Depends(get_current_session)):
+    datasets = session_manager.list_datasets(session["user_id"])
+    # return summary metadata only
+    return [{"id": d["id"], "kind": d["kind"], "files": d["files"], "created_at": d["created_at"], "pinned": d.get("pinned", False)} for d in datasets]
+
+@app.get("/api/invoices/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
+    ds = session_manager.get_dataset(session["user_id"], dataset_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return ds
+
+@app.delete("/api/invoices/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
+    ok = session_manager.delete_dataset(session["user_id"], dataset_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return {"success": True, "deleted": dataset_id}
 
 
 @app.get("/api/debug/database-test")
@@ -718,7 +797,7 @@ except Exception as e:
 
 
 @app.get("/api/export/xlsx")
-async def export_xlsx():
+async def export_xlsx(dataset_id: Optional[str] = Query(None)):
     try:
         if not OPENPYXL_AVAILABLE:
             raise HTTPException(
@@ -741,7 +820,7 @@ async def export_xlsx():
 
 
 @app.get("/api/export/download-xlsx")
-async def download_xlsx():
+async def download_xlsx(dataset_id: Optional[str] = Query(None)):
     try:
         data_dir = "data"
         if not os.path.exists(data_dir):
@@ -762,7 +841,7 @@ async def download_xlsx():
 
 
 @app.get("/api/invoices/xlsx/stats")
-async def get_xlsx_stats():
+async def get_xlsx_stats(dataset_id: Optional[str] = Query(None)):
     try:
         if not PANDAS_AVAILABLE:
             return {
@@ -815,10 +894,67 @@ async def get_xlsx_stats():
 
 
 @app.get("/api/invoices/xlsx/data")
-async def get_xlsx_data():
+async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
+            
+        # If dataset_id is provided, fetch from dataset
+        if dataset_id:
+            ds = session_manager.get_dataset(session["user_id"], dataset_id)
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            
+            # Convert dataset data to the format expected by frontend
+            parsed_result = ds.get("parsed_result", {})
+            # Create a DataFrame-like structure from dataset
+            # Note: This is a simplified implementation - you might want to store 
+            # the actual Excel file per dataset or convert parsed_result properly
+            rows = []
+            if parsed_result:
+                row = {
+                    "file_name": parsed_result.get("filename", ""),
+                    "vendor": parsed_result.get("vendor", ""),
+                    "invoice_number": parsed_result.get("invoice_number", ""),
+                    "invoice_date": parsed_result.get("invoice_date", ""),
+                    "subtotal": parsed_result.get("subtotal", 0),
+                    "shipping_amount": parsed_result.get("shipping_amount", 0),
+                    "tax_amount": parsed_result.get("tax_amount", 0),
+                    "total_amount": parsed_result.get("total_amount", 0),
+                    "currency": parsed_result.get("currency", ""),
+                    "parsed_timestamp": parsed_result.get("parsed_at", ""),
+                }
+                rows.append(row)
+            
+            columns = [
+                "file_name", "vendor", "invoice_number", "invoice_date",
+                "subtotal", "shipping_amount", "tax_amount", "total_amount",
+                "currency", "parsed_timestamp"
+            ]
+            
+            cleaned_rows = []
+            for row in rows:
+                cleaned_row = {}
+                for col in columns:
+                    value = row.get(col, "")
+                    if pd.isna(value) or value == "":
+                        cleaned_row[col] = ""
+                    elif isinstance(value, float):
+                        cleaned_row[col] = round(value, 2) if value != 0 else 0.0
+                    else:
+                        cleaned_row[col] = str(value)
+                cleaned_rows.append(cleaned_row)
+            
+            return {
+                "filename": f"dataset_{dataset_id}.xlsx",
+                "columns": columns,
+                "rows": cleaned_rows,
+                "row_count": len(rows),
+                "file_size": 0,
+                "last_modified": time.time(),
+            }
+        
+        # Existing fallback: use latest Excel file
         data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
@@ -869,44 +1005,149 @@ def clean_data_for_json(data):
 
 
 @app.get("/api/invoices/tracking/dashboard")
-async def get_invoice_tracking_dashboard():
+async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
-        if not PANDAS_AVAILABLE:
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                    "error": "pandas not available",
+        # If dataset_id is provided, fetch from dataset
+        if dataset_id:
+            ds = session_manager.get_dataset(session["user_id"], dataset_id)
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            
+            # Convert dataset data to tracking dashboard format
+            parsed_result = ds.get("parsed_result", {})
+            
+            # Create a mock tracking dashboard from the dataset
+            invoices = []
+            if parsed_result:
+                vendor_str = str(parsed_result.get("vendor", ""))
+                invoice_num_str = str(parsed_result.get("invoice_number", ""))
+                
+                invoice_date = parsed_result.get("invoice_date")
+                if invoice_date and isinstance(invoice_date, str):
+                    try:
+                        invoice_date = datetime.strptime(invoice_date, "%Y-%m-%d")
+                    except:
+                        invoice_date = datetime.now()
+                else:
+                    invoice_date = datetime.now()
+                
+                due_date = invoice_date + timedelta(days=30)
+                
+                status = "sent"
+                today = datetime.now().date()
+                due_date_date = due_date.date()
+                if due_date_date < today:
+                    status = "overdue"
+                elif (due_date_date - today).days <= 7:
+                    status = "due"
+                
+                if hash(vendor_str + invoice_num_str) % 3 == 0:
+                    status = "viewed"
+                
+                amount = parsed_result.get("total_amount", 0)
+                if not isinstance(amount, (int, float)):
+                    try:
+                        amount = float(amount)
+                    except:
+                        amount = 0.0
+                
+                invoice_data = {
+                    "id": f"inv_{hash(vendor_str + invoice_num_str)}",
+                    "vendor": vendor_str if vendor_str != "" else "Unknown Vendor",
+                    "invoice_number": invoice_num_str if invoice_num_str != "" else "N/A",
+                    "invoice_date": invoice_date.strftime("%Y-%m-%d"),
+                    "due_date": due_date.strftime("%Y-%m-%d"),
+                    "amount": amount,
+                    "status": status,
+                    "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
+                    "days_until_due": (due_date_date - today).days,
                 }
+                invoices.append(invoice_data)
+            
+            total_outstanding = sum(i["amount"] for i in invoices if i["status"] in ["sent", "viewed", "due"])
+            
+            status_counts = {
+                "sent": len([i for i in invoices if i["status"] == "sent"]),
+                "viewed": len([i for i in invoices if i["status"] == "viewed"]),
+                "due": len([i for i in invoices if i["status"] == "due"]),
+                "overdue": len([i for i in invoices if i["status"] == "overdue"]),
+            }
+            
+            overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue"])
+            health_percentage = (
+                ((total_outstanding - overdue_amount) / total_outstanding * 100)
+                if total_outstanding > 0
+                else 100
             )
+            collections_health = (
+                "healthy"
+                if health_percentage >= 80
+                else "warning" if health_percentage >= 60 else "critical"
+            )
+            
+            cash_flow_calendar = []
+            for inv in invoices:
+                if inv.get("due_date") and inv["due_date"] != "N/A":
+                    try:
+                        date = datetime.strptime(inv["due_date"], "%Y-%m-%d").date()
+                        # Check if this date is already in calendar
+                        existing = next((d for d in cash_flow_calendar if d["date"] == date.strftime("%Y-%m-%d")), None)
+                        if existing:
+                            existing["amount"] += inv["amount"]
+                            existing["invoice_count"] += 1
+                        else:
+                            cash_flow_calendar.append({
+                                "date": date.strftime("%Y-%m-%d"),
+                                "amount": inv["amount"],
+                                "invoice_count": 1,
+                            })
+                    except:
+                        continue
+            
+            # Sort by date
+            cash_flow_calendar.sort(key=lambda x: x["date"])
+            
+            result = clean_data_for_json({
+                "total_outstanding": total_outstanding,
+                "invoices": invoices,
+                "status_counts": status_counts,
+                "collections_health": collections_health,
+                "cash_flow_calendar": cash_flow_calendar,
+                "health_percentage": health_percentage,
+            })
+            return result
+        
+        # Existing fallback: use latest Excel data
+        if not PANDAS_AVAILABLE:
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+                "error": "pandas not available",
+            })
         data_dir = "data"
         if not os.path.exists(data_dir):
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                }
-            )
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+            })
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         if not xlsx_files:
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                }
-            )
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+            })
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
         df = df.fillna("")
@@ -993,7 +1234,7 @@ async def get_invoice_tracking_dashboard():
             "due": len([i for i in invoices if i["status"] == "due"]),
             "overdue": len([i for i in invoices if i["status"] == "overdue"]),
         }
-        overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
+        overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue"])
         health_percentage = (
             ((total_outstanding - overdue_amount) / total_outstanding * 100)
             if total_outstanding > 0

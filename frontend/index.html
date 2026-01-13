@@ -711,6 +711,43 @@
         .scrollable-table table {
             margin-bottom: 0;
         }
+
+        /* Dataset Selector Styles */
+        .dataset-selector-container {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .dataset-selector {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid #e6e9f8;
+            background: white;
+            min-width: 200px;
+        }
+
+        .dataset-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+
+        .badge-single {
+            background: #667eea;
+            color: white;
+        }
+
+        .badge-bulk {
+            background: #28a745;
+            color: white;
+        }
     </style>
 </head>
 
@@ -766,6 +803,15 @@
             </div>
 
             <div id="excel-viewer-tab" class="tab-content">
+                <!-- Dataset Selector UI -->
+                <div class="dataset-selector-container">
+                    <select id="datasetSelector" class="dataset-selector">
+                        <option value="">Latest dataset</option>
+                    </select>
+                    <button id="refreshDatasets" style="padding:6px 10px;border-radius:6px;">Refresh</button>
+                    <button id="deleteDataset" style="padding:6px 10px;border-radius:6px;background:transparent;color:#c00;border:1px solid #f5c6cb;border-radius:6px;">Delete</button>
+                </div>
+
                 <div class="feature-card">
                     <div class="feature-icon">📊</div>
                     <div class="feature-title">Excel Data Analysis</div>
@@ -808,6 +854,15 @@
             </div>
 
             <div id="invoice-tracking-tab" class="tab-content">
+                <!-- Dataset Selector UI -->
+                <div class="dataset-selector-container">
+                    <select id="datasetSelectorTracking" class="dataset-selector">
+                        <option value="">Latest dataset</option>
+                    </select>
+                    <button id="refreshDatasetsTracking" style="padding:6px 10px;border-radius:6px;">Refresh</button>
+                    <button id="deleteDatasetTracking" style="padding:6px 10px;border-radius:6px;background:transparent;color:#c00;border:1px solid #f5c6cb;border-radius:6px;">Delete</button>
+                </div>
+
                 <div class="feature-card">
                     <div class="feature-icon">💰</div>
                     <div class="feature-title">Invoice Tracking Dashboard</div>
@@ -967,6 +1022,8 @@
         const API_URL = '/api';
         let currentToken = '';
         let currentSessionId = '';
+        let currentDatasetId = '';
+        let currentDatasetIdTracking = '';
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -996,12 +1053,21 @@
         const invoiceList = document.getElementById('invoiceList');
         const noTrackingData = document.getElementById('noTrackingData');
 
+        // Dataset selector elements
+        const datasetSelector = document.getElementById('datasetSelector');
+        const refreshDatasets = document.getElementById('refreshDatasets');
+        const deleteDataset = document.getElementById('deleteDataset');
+        const datasetSelectorTracking = document.getElementById('datasetSelectorTracking');
+        const refreshDatasetsTracking = document.getElementById('refreshDatasetsTracking');
+        const deleteDatasetTracking = document.getElementById('deleteDatasetTracking');
+
         // Donation widget elements
         const donateBtn = document.getElementById('donateBtn');
         const donateModal = document.getElementById('donateModal');
         const copyEth = document.getElementById('copyEth');
         const openWallet = document.getElementById('openWallet');
         const ETH_ADDR = '0x6551f7a3c40208d5b4395387a2Afe019C915A458';
+        
         // Donation pill behavior
         donateBtn.addEventListener('click', () => {
             donateModal.style.display = donateModal.style.display === 'none' ? 'block' : 'none';
@@ -1059,10 +1125,113 @@
 
             if (tabName === 'excel-viewer') {
                 loadExcelData();
+                populateDatasetSelector();
             } else if (tabName === 'invoice-tracking') {
                 loadInvoiceTrackingData();
+                populateDatasetSelectorTracking();
             }
         }
+
+        // Dataset functions
+        async function fetchDatasets() {
+            const res = await fetch(`${API_URL}/invoices/datasets`, {
+                headers: { 'Authorization': `Bearer ${currentToken}` }
+            });
+            if (!res.ok) return [];
+            return await res.json();
+        }
+
+        async function populateDatasetSelector() {
+            try {
+                const list = await fetchDatasets();
+                const sel = document.getElementById('datasetSelector');
+                sel.innerHTML = `<option value="">Latest dataset</option>`;
+                list.forEach(ds => {
+                    const label = `${ds.kind.toUpperCase()} - ${ds.files?.length || 0} file(s) - ${new Date(ds.created_at * 1000).toLocaleString()}`;
+                    const opt = document.createElement('option');
+                    opt.value = ds.id;
+                    opt.textContent = label;
+                    sel.appendChild(opt);
+                });
+                // select last_dataset_id if none selected
+                if (!currentDatasetId && list.length>0) {
+                    currentDatasetId = list[list.length-1].id;
+                    sel.value = currentDatasetId;
+                }
+            } catch (error) {
+                console.error('Error populating dataset selector:', error);
+            }
+        }
+
+        async function populateDatasetSelectorTracking() {
+            try {
+                const list = await fetchDatasets();
+                const sel = document.getElementById('datasetSelectorTracking');
+                sel.innerHTML = `<option value="">Latest dataset</option>`;
+                list.forEach(ds => {
+                    const label = `${ds.kind.toUpperCase()} - ${ds.files?.length || 0} file(s) - ${new Date(ds.created_at * 1000).toLocaleString()}`;
+                    const opt = document.createElement('option');
+                    opt.value = ds.id;
+                    opt.textContent = label;
+                    sel.appendChild(opt);
+                });
+                // select last_dataset_id if none selected
+                if (!currentDatasetIdTracking && list.length>0) {
+                    currentDatasetIdTracking = list[list.length-1].id;
+                    sel.value = currentDatasetIdTracking;
+                }
+            } catch (error) {
+                console.error('Error populating dataset selector:', error);
+            }
+        }
+
+        // Setup dataset selector event listeners
+        document.getElementById('refreshDatasets')?.addEventListener('click', () => populateDatasetSelector());
+        document.getElementById('refreshDatasetsTracking')?.addEventListener('click', () => populateDatasetSelectorTracking());
+
+        datasetSelector?.addEventListener('change', (e) => {
+            currentDatasetId = e.target.value;
+            loadExcelData();
+        });
+
+        datasetSelectorTracking?.addEventListener('change', (e) => {
+            currentDatasetIdTracking = e.target.value;
+            loadInvoiceTrackingData();
+        });
+
+        document.getElementById('deleteDataset')?.addEventListener('click', async () => {
+            if (!currentDatasetId) { alert('Select a dataset first'); return; }
+            if (!confirm('Delete selected dataset? This cannot be undone.')) return;
+            const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetId}`, { 
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${currentToken}` }
+            });
+            if (res.ok) {
+                alert('Dataset deleted');
+                currentDatasetId = '';
+                await populateDatasetSelector();
+                loadExcelData();
+            } else {
+                alert('Delete failed');
+            }
+        });
+
+        document.getElementById('deleteDatasetTracking')?.addEventListener('click', async () => {
+            if (!currentDatasetIdTracking) { alert('Select a dataset first'); return; }
+            if (!confirm('Delete selected dataset? This cannot be undone.')) return;
+            const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetIdTracking}`, { 
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${currentToken}` }
+            });
+            if (res.ok) {
+                alert('Dataset deleted');
+                currentDatasetIdTracking = '';
+                await populateDatasetSelectorTracking();
+                loadInvoiceTrackingData();
+            } else {
+                alert('Delete failed');
+            }
+        });
 
         async function getFreshToken() {
             try {
@@ -1110,10 +1279,9 @@
             try {
                 if (!currentToken) await getFreshToken();
 
-                const response = await fetch(`${API_URL}/invoices/xlsx/data`, {
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`
-                    }
+                const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
+                const response = await fetch(`${API_URL}/invoices/xlsx/data${datasetQuery}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
                 });
 
                 if (response.status === 401) {
@@ -1200,7 +1368,8 @@
             try {
                 if (!currentToken) await getFreshToken();
 
-                const response = await fetch(`${API_URL}/invoices/tracking/dashboard`, {
+                const datasetQuery = currentDatasetIdTracking ? `?dataset_id=${encodeURIComponent(currentDatasetIdTracking)}` : '';
+                const response = await fetch(`${API_URL}/invoices/tracking/dashboard${datasetQuery}`, {
                     headers: {
                         'Authorization': `Bearer ${currentToken}`
                     }
@@ -1567,7 +1736,7 @@
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${API_URL}/invoices/parse`, {
+            const response = await fetch(`${API_URL}/invoices/parse-stateless`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${currentToken}`
@@ -1582,27 +1751,46 @@
 
             const data = await response.json();
             handleResponse(data, response.ok, file.name);
+            
+            // Update current dataset and refresh selector
+            if (data.dataset_id) {
+                currentDatasetId = data.dataset_id;
+                await populateDatasetSelector();
+            }
         }
 
         async function parseBulkInvoices(files) {
             const formData = new FormData();
             files.forEach(file => formData.append('files', file));
 
-            const response = await fetch(`${API_URL}/invoices/bulk`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${currentToken}`
-                },
-                body: formData
-            });
-
-            if (response.status === 401) {
-                await getFreshToken();
-                return await parseBulkInvoices(files);
+            // Note: You would need to implement a bulk endpoint that returns dataset_id
+            // For now, we'll simulate bulk parsing by parsing files individually
+            let successful = 0;
+            let detailedResults = [];
+            
+            for (const file of files) {
+                try {
+                    const result = await parseSingleInvoice(file);
+                    successful++;
+                    detailedResults.push({
+                        filename: file.name,
+                        success: true,
+                        error: null
+                    });
+                } catch (error) {
+                    detailedResults.push({
+                        filename: file.name,
+                        success: false,
+                        error: error.message
+                    });
+                }
             }
-
-            const data = await response.json();
-            handleBulkResponse(data, response.ok);
+            
+            handleBulkResponse({
+                files_processed: files.length,
+                files_successful: successful,
+                detailed_results: detailedResults
+            }, true);
         }
 
         function handleResponse(data, isOk, filename) {
@@ -1625,7 +1813,7 @@
         }
 
         function displayResults(data, filename) {
-            const parsedData = data.parsed_data || {};
+            const parsedData = data.data || {};
 
             const fieldsToDisplay = [
                 'vendor', 'invoice_number', 'invoice_date',
@@ -1764,7 +1952,8 @@
 
         async function downloadXLSX() {
             try {
-                const response = await fetch(`${API_URL}/export/download-xlsx`);
+                const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
+                const response = await fetch(`${API_URL}/export/download-xlsx${datasetQuery}`);
 
                 if (response.ok) {
                     const blob = await response.blob();
