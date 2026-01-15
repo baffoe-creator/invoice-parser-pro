@@ -1,7 +1,8 @@
+ 
 urls = [
-  "https://invoice-parser-proo.onrender.com/",   
-  "https://invoice-parser-pro.onrender.com/share/zapier",
-  "https://invoice-parser-pro.onrender.com/share/google-sheets",
+  "https://invoice-parser-pro-o.onrender.com/",   
+  "https://invoice-parser-pro-o.onrender.com/share/zapier",
+  "https://invoice-parser-pro-o.onrender.com/share/google-sheets",
 ]
 
 xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
