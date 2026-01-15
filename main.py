@@ -1073,7 +1073,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                 "overdue": len([i for i in invoices if i["status"] == "overdue"]),
             }
             
-            overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue"])
+            overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
             health_percentage = (
                 ((total_outstanding - overdue_amount) / total_outstanding * 100)
                 if total_outstanding > 0
