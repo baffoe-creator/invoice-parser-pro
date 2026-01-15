@@ -548,7 +548,7 @@ async def share_page(page_slug: str, request: Request):
 
 @app.get("/sitemap.xml")
 async def get_sitemap():
-    return FileResponse("static/sitemap.xml", media_type="application/xml")
+    return FileResponse("static/sitemap.xml", media_type="application/xml", headers={"Content-Type": "application/xml; charset=utf-8"})
 
 @app.get("/robots.txt")
 async def get_robots():
@@ -1234,7 +1234,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
             "due": len([i for i in invoices if i["status"] == "due"]),
             "overdue": len([i for i in invoices if i["status"] == "overdue"]),
         }
-        overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue"])
+        overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
         health_percentage = (
             ((total_outstanding - overdue_amount) / total_outstanding * 100)
             if total_outstanding > 0
