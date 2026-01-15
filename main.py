@@ -451,22 +451,36 @@ async def share_page(page_slug: str, request: Request):
     return HTMLResponse(content=html_content)
 
 @app.get("/sitemap.xml")
-async def get_sitemap():
+@app.head("/sitemap.xml")   
+async def get_sitemap(request: Request):
+    if request.method == "HEAD":
+         
+        return Response(
+            headers={
+                "Content-Type": "application/xml; charset=utf-8",
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
+    
     urls = [
         "https://invoice-parser-pro-o.onrender.com/",
         "https://invoice-parser-pro-o.onrender.com/share/zapier",
         "https://invoice-parser-pro-o.onrender.com/share/google-sheets",
     ]
     
-    xml_content = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for url in urls:
-        xml_content += f'<url><loc>{url}</loc></url>'
+        xml_content += f'  <url>\n    <loc>{url}</loc>\n  </url>\n'
     xml_content += '</urlset>'
     
     return Response(
         content=xml_content,
         media_type="application/xml",
-        headers={"Content-Type": "application/xml; charset=utf-8"}
+        headers={
+            "Content-Type": "application/xml; charset=utf-8",
+            "Cache-Control": "public, max-age=3600"
+        }
     )
 
 @app.get("/robots.txt")
