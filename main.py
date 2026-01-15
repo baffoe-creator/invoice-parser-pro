@@ -9,7 +9,7 @@ import uuid
 from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 import glob
 from datetime import datetime, timedelta
 import math
@@ -34,14 +34,6 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
     print("⚠️  pandas not available - Excel features will be limited")
-
-try:
-    import psycopg2
-
-    PSYCOPG2_AVAILABLE = True
-except ImportError:
-    PSYCOPG2_AVAILABLE = False
-    print("⚠️  psycopg2 not available - database features will be limited")
 
 try:
     import pdfplumber
@@ -392,82 +384,6 @@ def get_repository():
     return None
 
 
-def test_supabase_connection():
-    if not PSYCOPG2_AVAILABLE:
-        print("⚠️  psycopg2 not available, skipping database connection")
-        return False
-
-    try:
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            print("❌ No DATABASE_URL found in environment variables")
-            return False
-
-        print("🔗 Testing database connection via DATABASE_URL...")
-        try:
-            result = urlparse(database_url)
-            hostname = result.hostname
-            username = result.username
-            password = result.password
-            port = result.port or 5432
-            database = result.path[1:] if result.path else "postgres"
-
-            print(f"   Hostname: {hostname}")
-            print(f"   Port: {port}")
-            print(f"   Database: {database}")
-            print(f"   Username: {username}")
-            print(f"   Password: {'✓' if password else '✗'}")
-
-            if hostname and "pooler" not in hostname and "supabase" in hostname:
-                print(
-                    "⚠️  Warning: Using direct Supabase URL instead of connection pooler"
-                )
-                print(
-                    "💡 Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-                )
-            except Exception as parse_error:
-                print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
-                return False
-
-        connection = psycopg2.connect(database_url, connect_timeout=10)
-        cursor = connection.cursor()
-        cursor.execute("SELECT NOW(), current_user, current_database();")
-        result = cursor.fetchone()
-        print(f"✅ Database connected successfully")
-        print(f"   Server time: {result[0]}")
-        print(f"   User: {result[1]}")
-        print(f"   Database: {result[2]}")
-
-        cursor.close()
-        connection.close()
-        return True
-
-    except psycopg2.OperationalError as e:
-        error_msg = str(e)
-        print(f"❌ Database connection failed: {error_msg}")
-        if "Tenant or user not found" in error_msg:
-            print("🔧 Supabase Connection Issue Detected:")
-            print("   1. Your DATABASE_URL format appears incorrect")
-            print(
-                "   2. Check your Supabase dashboard for the correct connection string"
-            )
-            print("   3. Use Connection Pooler format:")
-            print(
-                "      postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-            )
-            print("   4. Replace [project-ref] with your actual project reference")
-            print(
-                "   5. Ensure your password doesn't have special characters that need URL encoding"
-            )
-        return False
-    except Exception as e:
-        print(f"❌ Unexpected database error: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
 def initialize_app():
     global _initialized
     if _initialized:
@@ -477,22 +393,12 @@ def initialize_app():
         data_dir = "data"
         os.makedirs(data_dir, exist_ok=True)
         print(f"📁 Data directory: {data_dir}")
-
-        if os.getenv("DATABASE_URL") or os.getenv("PGHOST"):
-            connection_result = test_supabase_connection()
-            if connection_result:
-                print("✅ Database connection verified")
-            else:
-                print("⚠️  Database connection failed - using fallback storage")
-        else:
-            print("ℹ️  No database configuration found - using file-based storage")
-
+        print("ℹ️  Using file-based storage (no database configured)")
         _initialized = True
         print("🎉 Application initialized successfully")
     except Exception as e:
         print(f"❌ Initialization error: {e}")
         import traceback
-
         traceback.print_exc()
 
 
@@ -511,7 +417,6 @@ async def api_info():
         "version": "1.0.0",
         "features": {
             "pandas_available": PANDAS_AVAILABLE,
-            "database_available": PSYCOPG2_AVAILABLE,
             "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
             "excel_export_available": OPENPYXL_AVAILABLE,
         },
@@ -522,7 +427,7 @@ async def api_info():
 async def share_page(page_slug: str, request: Request):
     title = "Invoice Parser Pro"
     desc = "Parse PDF invoices into structured data and export to Excel."
-    base_url = "https://invoice-parser-pro.onrender.com"
+    base_url = "https://invoice-parser-pro-o.onrender.com"
     if os.getenv("RENDER_EXTERNAL_URL"):
         base_url = os.getenv("RENDER_EXTERNAL_URL").rstrip('/')
     
@@ -543,12 +448,26 @@ async def share_page(page_slug: str, request: Request):
   <p><a href="{base_url}">Try Invoice Parser Pro</a></p>
 </body></html>"""
 
-    
     return HTMLResponse(content=html_content)
 
 @app.get("/sitemap.xml")
 async def get_sitemap():
-    return FileResponse("static/sitemap.xml", media_type="application/xml", headers={"Content-Type": "application/xml; charset=utf-8"})
+    urls = [
+        "https://invoice-parser-pro-o.onrender.com/",
+        "https://invoice-parser-pro-o.onrender.com/share/zapier",
+        "https://invoice-parser-pro-o.onrender.com/share/google-sheets",
+    ]
+    
+    xml_content = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    for url in urls:
+        xml_content += f'<url><loc>{url}</loc></url>'
+    xml_content += '</urlset>'
+    
+    return Response(
+        content=xml_content,
+        media_type="application/xml",
+        headers={"Content-Type": "application/xml; charset=utf-8"}
+    )
 
 @app.get("/robots.txt")
 async def get_robots():
@@ -559,20 +478,12 @@ Sitemap: https://invoice-parser-pro-o.onrender.com/sitemap.xml"""
 
 @app.get("/health")
 async def health_check():
-    db_status = "unknown"
-    if PSYCOPG2_AVAILABLE:
-        try:
-            db_status = "connected" if test_supabase_connection() else "disconnected"
-        except:
-            db_status = "error"
-
     return {
         "status": "healthy",
         "service": "Invoice Parser Pro API",
         "version": "1.0.0",
-        "database_status": db_status,
+        "database_status": "not_configured",
         "pandas_available": PANDAS_AVAILABLE,
-        "database_available": PSYCOPG2_AVAILABLE,
         "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
         "excel_export_available": OPENPYXL_AVAILABLE,
     }
@@ -737,33 +648,10 @@ async def delete_dataset(dataset_id: str, session: dict = Depends(get_current_se
 
 @app.get("/api/debug/database-test")
 async def debug_database_test():
-    import psycopg2
-    from urllib.parse import urlparse
-
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        return {"error": "DATABASE_URL not found in environment"}
-
-    try:
-        conn = psycopg2.connect(database_url, connect_timeout=10)
-        cursor = conn.cursor()
-        cursor.execute("SELECT version();")
-        version = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        return {
-            "status": "connected",
-            "version": version[0],
-            "database_url_preview": database_url[:80] + "...",
-        }
-
-    except psycopg2.OperationalError as e:
-        return {
-            "status": "failed",
-            "error": str(e),
-            "suggestion": "Check if your password needs URL encoding for special characters",
-        }
+    return {
+        "status": "not_configured",
+        "message": "Database is not configured - using file-based storage"
+    }
 
 
 @app.post("/api/auth/demo-login")
@@ -1347,14 +1235,8 @@ async def debug_database():
     import socket
 
     result = {
-        "database_url_exists": bool(os.getenv("DATABASE_URL")),
-        "individual_vars": {
-            "host": bool(os.getenv("PGHOST") or os.getenv("host")),
-            "user": bool(os.getenv("PGUSER") or os.getenv("user")),
-            "password": bool(os.getenv("PGPASSWORD") or os.getenv("password")),
-        },
-        "dns_resolution": {},
-        "connection_test": {},
+        "database_configured": False,
+        "message": "No database configured - using file-based storage"
     }
 
     database_url = os.getenv("DATABASE_URL")
@@ -1376,20 +1258,9 @@ async def debug_database():
         except Exception as e:
             result["parse_error"] = str(e)
 
-    if PSYCOPG2_AVAILABLE:
-        result["connection_test"]["psycopg2_available"] = True
-        try:
-            connection_result = test_supabase_connection()
-            result["connection_test"]["success"] = connection_result
-        except Exception as e:
-            result["connection_test"]["success"] = False
-            result["connection_test"]["error"] = str(e)
-    else:
-        result["connection_test"]["psycopg2_available"] = False
-        result["connection_test"]["success"] = False
-        result["connection_test"]["error"] = "psycopg2 not available"
-
     return result
+
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 INDEX_PATH = FRONTEND_DIR / "index.html"
@@ -1412,7 +1283,6 @@ async def spa_fallback(full_path: str):
     if INDEX_PATH.exists():
         return FileResponse(str(INDEX_PATH))
     return await api_info()
-
 
 
 if __name__ == "__main__":
