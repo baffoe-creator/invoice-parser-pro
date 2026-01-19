@@ -29,7 +29,6 @@ load_dotenv()
 
 try:
     import pandas as pd
-
     PANDAS_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
@@ -37,7 +36,6 @@ except ImportError:
 
 try:
     import pdfplumber
-
     PDFPLUMBER_AVAILABLE = True
 except ImportError:
     PDFPLUMBER_AVAILABLE = False
@@ -45,7 +43,6 @@ except ImportError:
 
 try:
     from openpyxl import Workbook
-
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
@@ -64,8 +61,8 @@ class SessionManager:
             "user_id": f"anon_{secrets.token_hex(8)}",
             "invoices": [],
             "last_activity": time.time(),
-            "datasets": [],  # Add datasets list to session
-            "last_dataset_id": None,  # Track latest dataset
+            "datasets": [],
+            "last_dataset_id": None,
         }
         return session_id
 
@@ -95,7 +92,6 @@ class SessionManager:
         session = self.get_session(session_id)
         return session["invoices"] if session else []
 
-    # Dataset support methods
     def create_dataset(self, session_id: str, kind: str, files: list, parsed_result: dict) -> Optional[str]:
         session = self.get_session(session_id)
         if not session:
@@ -103,14 +99,13 @@ class SessionManager:
         dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
         ds = {
             "id": dataset_id,
-            "kind": kind,  # 'single' or 'bulk'
+            "kind": kind,
             "files": files,
             "created_at": time.time(),
-            "parsed_result": parsed_result,  # store minimal structure for UI
+            "parsed_result": parsed_result,
             "pinned": False,
         }
         session.setdefault("datasets", []).append(ds)
-        # optional: update a default pointer to latest dataset
         session["last_dataset_id"] = dataset_id
         return dataset_id
 
@@ -234,7 +229,6 @@ app.add_middleware(
 _initialized = False
 
 
-
 class XLSXExporter:
     def __init__(self):
         self.data_dir = "data"
@@ -314,7 +308,6 @@ class XLSXExporter:
         except Exception as e:
             print(f"❌ XLSX export error: {e}")
             import traceback
-
             traceback.print_exc()
             return {"error": f"Failed to export to XLSX: {str(e)}"}
 
@@ -376,7 +369,6 @@ def get_auth_service():
     class AuthService:
         def create_access_token(self, data):
             return "demo_token_12345"
-
     return AuthService()
 
 
@@ -454,7 +446,6 @@ async def share_page(page_slug: str, request: Request):
 @app.head("/sitemap.xml")   
 async def get_sitemap(request: Request):
     if request.method == "HEAD":
-         
         return Response(
             headers={
                 "Content-Type": "application/xml; charset=utf-8",
@@ -565,7 +556,6 @@ async def parse_invoice_stateless(
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
 
-            # Create dataset for this parse
             dataset_id = session_manager.create_dataset(
                 session_id=session["user_id"],
                 kind="single",
@@ -579,7 +569,7 @@ async def parse_invoice_stateless(
             return {
                 "success": True,
                 "data": parsed_dict,
-                "dataset_id": dataset_id,  # Return dataset ID
+                "dataset_id": dataset_id,
                 "session_invoices_count": len(session["invoices"]),
                 "export_result": export_result,
                 "message": "Invoice parsed and stored in session",
@@ -638,11 +628,9 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
     return {"message": "Session cleared", "invoices_count": 0}
 
 
-# Dataset APIs
 @app.get("/api/invoices/datasets")
 async def list_datasets(session: dict = Depends(get_current_session)):
     datasets = session_manager.list_datasets(session["user_id"])
-    # return summary metadata only
     return [{"id": d["id"], "kind": d["kind"], "files": d["files"], "created_at": d["created_at"], "pinned": d.get("pinned", False)} for d in datasets]
 
 @app.get("/api/invoices/datasets/{dataset_id}")
@@ -672,7 +660,6 @@ async def debug_database_test():
 async def demo_login():
     try:
         from src.api.dependencies import get_auth_service
-
         auth_service = get_auth_service()
         token = auth_service.create_access_token(
             {"user_id": "demo_user", "username": "demo"}
@@ -684,7 +671,6 @@ async def demo_login():
 
 try:
     from src.api.endpoints import invoices
-
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
     print("✅ Invoice routes loaded successfully")
 except Exception as e:
@@ -800,18 +786,13 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
     try:
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
-            
-        # If dataset_id is provided, fetch from dataset
+        
         if dataset_id:
             ds = session_manager.get_dataset(session["user_id"], dataset_id)
             if not ds:
                 raise HTTPException(status_code=404, detail="Dataset not found")
             
-            # Convert dataset data to the format expected by frontend
             parsed_result = ds.get("parsed_result", {})
-            # Create a DataFrame-like structure from dataset
-            # Note: This is a simplified implementation - you might want to store 
-            # the actual Excel file per dataset or convert parsed_result properly
             rows = []
             if parsed_result:
                 row = {
@@ -856,7 +837,6 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
                 "last_modified": time.time(),
             }
         
-        # Existing fallback: use latest Excel file
         data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
@@ -909,16 +889,13 @@ def clean_data_for_json(data):
 @app.get("/api/invoices/tracking/dashboard")
 async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
-        # If dataset_id is provided, fetch from dataset
         if dataset_id:
             ds = session_manager.get_dataset(session["user_id"], dataset_id)
             if not ds:
                 raise HTTPException(status_code=404, detail="Dataset not found")
             
-            # Convert dataset data to tracking dashboard format
             parsed_result = ds.get("parsed_result", {})
             
-            # Create a mock tracking dashboard from the dataset
             invoices = []
             if parsed_result:
                 vendor_str = str(parsed_result.get("vendor", ""))
@@ -992,7 +969,6 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                 if inv.get("due_date") and inv["due_date"] != "N/A":
                     try:
                         date = datetime.strptime(inv["due_date"], "%Y-%m-%d").date()
-                        # Check if this date is already in calendar
                         existing = next((d for d in cash_flow_calendar if d["date"] == date.strftime("%Y-%m-%d")), None)
                         if existing:
                             existing["amount"] += inv["amount"]
@@ -1006,7 +982,6 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                     except:
                         continue
             
-            # Sort by date
             cash_flow_calendar.sort(key=lambda x: x["date"])
             
             result = clean_data_for_json({
@@ -1019,7 +994,6 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
             })
             return result
         
-        # Existing fallback: use latest Excel data
         if not PANDAS_AVAILABLE:
             return clean_data_for_json({
                 "total_outstanding": 0,
@@ -1186,7 +1160,6 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
     except Exception as e:
         print(f"Dashboard error: {str(e)}")
         import traceback
-
         traceback.print_exc()
         return clean_data_for_json(
             {
@@ -1286,12 +1259,10 @@ if (FRONTEND_DIR / "static").exists():
 async def serve_index():
     if INDEX_PATH.exists():
         return FileResponse(str(INDEX_PATH))
-    # fallback to API info if frontend is missing
     return await api_info()
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
-    # Let API, share, sitemap, robots and static paths be handled by their own routes
     if full_path.startswith("api") or full_path.startswith("share") or full_path.startswith("sitemap.xml") or full_path.startswith("robots.txt") or full_path.startswith("static"):
         raise HTTPException(status_code=404)
     if INDEX_PATH.exists():
@@ -1301,5 +1272,4 @@ async def spa_fallback(full_path: str):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
