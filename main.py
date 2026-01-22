@@ -138,8 +138,11 @@ async def get_current_session(request: Request, response: Response) -> Dict[str,
         cookie_auth.create_session_cookie(response, session_id)
         session = session_manager.get_session(session_id)
 
-    return session
+    # expose the internal session_id on the session dict so handlers can use it
+    if session is not None:
+        session["session_id"] = session_id
 
+    return session
 
 app = FastAPI(
     title="Invoice Parser Pro API",
@@ -494,8 +497,8 @@ async def init_session(
     response: Response, session: dict = Depends(get_current_session)
 ):
     return {
-        "session_id": session["user_id"],
-        "invoices_count": len(session["invoices"]),
+        "session_id": session.get("session_id", session.get("user_id")),
+        "invoices_count": len(session.get("invoices", [])),
     }
 
 
@@ -546,7 +549,13 @@ async def parse_invoice_stateless(
                 "parsed_at": time.time(),
             }
 
-            success = session_manager.add_invoice(session["user_id"], parsed_dict)
+            # Use the internal session_id (not the user_id) to store session-scoped data
+            session_id = session.get("session_id") or cookie_auth.get_session_id(Request) if False else session.get("session_id")
+            if not session_id:
+                # fallback: try user_id (legacy) but prefer session_id
+                session_id = session.get("user_id")
+
+            success = session_manager.add_invoice(session_id, parsed_dict)
 
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
@@ -557,7 +566,7 @@ async def parse_invoice_stateless(
             return {
                 "success": True,
                 "data": parsed_dict,
-                "session_invoices_count": len(session["invoices"]),
+                "session_invoices_count": len(session.get("invoices", [])),
                 "export_result": export_result,
                 "message": "Invoice parsed and stored in session",
             }
@@ -566,6 +575,9 @@ async def parse_invoice_stateless(
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
+    except HTTPException:
+        # preserve intentional HTTP exceptions (400/503 etc.)
+        raise
     except Exception:
         import traceback
         logging.exception("Error parsing invoice")
@@ -575,14 +587,16 @@ async def parse_invoice_stateless(
 
 @app.get("/api/invoices/session")
 async def get_session_invoices(session: dict = Depends(get_current_session)):
-    invoices = session_manager.get_invoices(session["user_id"])
+    session_id = session.get("session_id") or session.get("user_id")
+    invoices = session_manager.get_invoices(session_id)
     return {"invoices": invoices, "count": len(invoices)}
 
 
 @app.get("/api/invoices/export-session")
 async def export_session_invoices(session: dict = Depends(get_current_session)):
     try:
-        invoices = session_manager.get_invoices(session["user_id"])
+        session_id = session.get("session_id") or session.get("user_id")
+        invoices = session_manager.get_invoices(session_id)
 
         if not invoices:
             raise HTTPException(status_code=404, detail="No invoices in session")
@@ -599,7 +613,7 @@ async def export_session_invoices(session: dict = Depends(get_current_session)):
 
         return FileResponse(
             path=export_path,
-            filename=f"invoices_export_{session['user_id']}.xlsx",
+            filename=f"invoices_export_{session_id}.xlsx",
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
@@ -610,11 +624,37 @@ async def export_session_invoices(session: dict = Depends(get_current_session)):
 
 @app.delete("/api/invoices/clear-session")
 async def clear_session_invoices(session: dict = Depends(get_current_session)):
-    session_id = session["user_id"]
+    session_id = session.get("session_id") or session.get("user_id")
     if session_id in session_manager.sessions:
         session_manager.sessions[session_id]["invoices"] = []
 
     return {"message": "Session cleared", "invoices_count": 0}
+
+
+# Dataset APIs (if you added dataset logic earlier, keep using session_id)
+@app.get("/api/invoices/datasets")
+async def list_datasets(session: dict = Depends(get_current_session)):
+    session_id = session.get("session_id") or session.get("user_id")
+    datasets = getattr(session_manager, "list_datasets", lambda s: [])(session_id)
+    return [{"id": d["id"], "kind": d["kind"], "files": d["files"], "created_at": d["created_at"], "pinned": d.get("pinned", False)} for d in datasets]
+
+
+@app.get("/api/invoices/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
+    session_id = session.get("session_id") or session.get("user_id")
+    ds = getattr(session_manager, "get_dataset", lambda s, d: None)(session_id, dataset_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return ds
+
+
+@app.delete("/api/invoices/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
+    session_id = session.get("session_id") or session.get("user_id")
+    ok = getattr(session_manager, "delete_dataset", lambda s, d: False)(session_id, dataset_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return {"success": True, "deleted": dataset_id}
 
 
 @app.get("/api/debug/database-test")
