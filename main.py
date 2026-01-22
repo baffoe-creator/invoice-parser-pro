@@ -5,15 +5,18 @@ import time
 import secrets
 import tempfile
 import logging
-from typing import Dict, Any, Optional
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response
+import uuid
+import importlib
+from typing import Dict, Any, Optional, List
+from pathlib import Path
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import glob
 from datetime import datetime, timedelta
 import math
 from urllib.parse import urlparse
-import importlib
 
 print(f"🐍 Python executable: {sys.executable}")
 print(f"🐍 Python version: {sys.version}")
@@ -28,7 +31,7 @@ try:
     import pandas as pd
 
     PANDAS_AVAILABLE = True
-except ImportError:
+except Exception:
     PANDAS_AVAILABLE = False
     print("⚠️  pandas not available - Excel features will be limited")
 
@@ -36,7 +39,7 @@ try:
     import psycopg2
 
     PSYCOPG2_AVAILABLE = True
-except ImportError:
+except Exception:
     PSYCOPG2_AVAILABLE = False
     print("⚠️  psycopg2 not available - database features will be limited")
 
@@ -44,7 +47,7 @@ try:
     import pdfplumber
 
     PDFPLUMBER_AVAILABLE = True
-except ImportError:
+except Exception:
     PDFPLUMBER_AVAILABLE = False
     print("⚠️  pdfplumber not available - PDF parsing features will be limited")
 
@@ -52,13 +55,14 @@ try:
     from openpyxl import Workbook
 
     OPENPYXL_AVAILABLE = True
-except ImportError:
+except Exception:
     OPENPYXL_AVAILABLE = False
     print("⚠️  openpyxl not available - Excel export features will be limited")
 
 
 class SessionManager:
     def __init__(self):
+        # sessions keyed by session token (the cookie value)
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = 7200
 
@@ -69,18 +73,19 @@ class SessionManager:
             "user_id": f"anon_{secrets.token_hex(8)}",
             "invoices": [],
             "last_activity": time.time(),
+            # optional dataset support
+            "datasets": [],
+            "last_dataset_id": None,
         }
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         if session_id not in self.sessions:
             return None
-
         session = self.sessions[session_id]
-        if time.time() - session["last_activity"] > self.session_timeout:
+        if time.time() - session.get("last_activity", 0) > self.session_timeout:
             del self.sessions[session_id]
             return None
-
         session["last_activity"] = time.time()
         return session
 
@@ -88,15 +93,58 @@ class SessionManager:
         session = self.get_session(session_id)
         if not session:
             return False
-
         invoice_data["id"] = f"inv_{secrets.token_hex(8)}"
         invoice_data["parsed_at"] = time.time()
-        session["invoices"].append(invoice_data)
+        session.setdefault("invoices", []).append(invoice_data)
         return True
 
     def get_invoices(self, session_id: str) -> list:
         session = self.get_session(session_id)
-        return session["invoices"] if session else []
+        return session.get("invoices", []) if session else []
+
+    # Dataset support
+    def create_dataset(self, session_id: str, kind: str, files: list, parsed_result: dict) -> Optional[str]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+        ds = {
+            "id": dataset_id,
+            "kind": kind,
+            "files": files,
+            "created_at": time.time(),
+            "parsed_result": parsed_result,
+            "pinned": False,
+        }
+        session.setdefault("datasets", []).append(ds)
+        session["last_dataset_id"] = dataset_id
+        return dataset_id
+
+    def list_datasets(self, session_id: str) -> list:
+        session = self.get_session(session_id)
+        return session.get("datasets", []) if session else []
+
+    def get_dataset(self, session_id: str, dataset_id: str) -> Optional[dict]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        for d in session.get("datasets", []):
+            if d["id"] == dataset_id:
+                return d
+        return None
+
+    def delete_dataset(self, session_id: str, dataset_id: str) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        datasets = session.get("datasets", [])
+        new_ds = [d for d in datasets if d["id"] != dataset_id]
+        if len(new_ds) == len(datasets):
+            return False
+        session["datasets"] = new_ds
+        if session.get("last_dataset_id") == dataset_id:
+            session["last_dataset_id"] = new_ds[-1]["id"] if new_ds else None
+        return True
 
 
 session_manager = SessionManager()
@@ -138,11 +186,12 @@ async def get_current_session(request: Request, response: Response) -> Dict[str,
         cookie_auth.create_session_cookie(response, session_id)
         session = session_manager.get_session(session_id)
 
-    # expose the internal session_id on the session dict so handlers can use it
+    # expose the session token on the returned dict for handlers to use
     if session is not None:
         session["session_id"] = session_id
 
     return session
+
 
 app = FastAPI(
     title="Invoice Parser Pro API",
@@ -170,6 +219,7 @@ def get_allowed_origins():
         [
             "https://invoice-parser-pro.onrender.com",
             "https://invoice-parser-proo.onrender.com",
+            "https://invoice-parser-pro-o.onrender.com",
         ]
     )
 
@@ -456,8 +506,9 @@ async def initialize_middleware(request, call_next):
     return response
 
 
-@app.get("/")
-async def root():
+# API info moved to /api/info (root will serve SPA)
+@app.get("/api/info", tags=["info"])
+async def api_info():
     return {
         "message": "Invoice Parser Pro API is running",
         "status": "healthy",
@@ -468,27 +519,6 @@ async def root():
             "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
             "excel_export_available": OPENPYXL_AVAILABLE,
         },
-    }
-
-
-@app.get("/health")
-async def health_check():
-    db_status = "unknown"
-    if PSYCOPG2_AVAILABLE:
-        try:
-            db_status = "connected" if test_supabase_connection() else "disconnected"
-        except:
-            db_status = "error"
-
-    return {
-        "status": "healthy",
-        "service": "Invoice Parser Pro API",
-        "version": "1.0.0",
-        "database_status": db_status,
-        "pandas_available": PANDAS_AVAILABLE,
-        "database_available": PSYCOPG2_AVAILABLE,
-        "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
-        "excel_export_available": OPENPYXL_AVAILABLE,
     }
 
 
@@ -549,23 +579,26 @@ async def parse_invoice_stateless(
                 "parsed_at": time.time(),
             }
 
-            # Use the internal session_id (not the user_id) to store session-scoped data
-            session_id = session.get("session_id") or cookie_auth.get_session_id(Request) if False else session.get("session_id")
-            if not session_id:
-                # fallback: try user_id (legacy) but prefer session_id
-                session_id = session.get("user_id")
-
+            # use the session token as the storage key
+            session_id = session.get("session_id") or session.get("user_id")
             success = session_manager.add_invoice(session_id, parsed_dict)
 
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
 
-            xlsx_exporter = XLSXExporter()
+            # create dataset (optional)
+            if hasattr(session_manager, "create_dataset"):
+                ds_id = session_manager.create_dataset(session_id, "single", [filename], parsed_dict)
+            else:
+                ds_id = None
+
+            xlsx_exporter = get_xlsx_exporter()
             export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
 
             return {
                 "success": True,
                 "data": parsed_dict,
+                "dataset_id": ds_id,
                 "session_invoices_count": len(session.get("invoices", [])),
                 "export_result": export_result,
                 "message": "Invoice parsed and stored in session",
@@ -576,10 +609,11 @@ async def parse_invoice_stateless(
                 os.unlink(temp_path)
 
     except HTTPException:
-        # preserve intentional HTTP exceptions (400/503 etc.)
+        # re-raise intended HTTP errors
         raise
     except Exception:
         import traceback
+
         logging.exception("Error parsing invoice")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal server error while parsing the invoice")
@@ -627,22 +661,21 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
     if session_id in session_manager.sessions:
         session_manager.sessions[session_id]["invoices"] = []
-
     return {"message": "Session cleared", "invoices_count": 0}
 
 
-# Dataset APIs (if you added dataset logic earlier, keep using session_id)
+# Dataset endpoints (optional - safe when SessionManager includes dataset support)
 @app.get("/api/invoices/datasets")
 async def list_datasets(session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
-    datasets = getattr(session_manager, "list_datasets", lambda s: [])(session_id)
+    datasets = session_manager.list_datasets(session_id) if hasattr(session_manager, "list_datasets") else []
     return [{"id": d["id"], "kind": d["kind"], "files": d["files"], "created_at": d["created_at"], "pinned": d.get("pinned", False)} for d in datasets]
 
 
 @app.get("/api/invoices/datasets/{dataset_id}")
 async def get_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
-    ds = getattr(session_manager, "get_dataset", lambda s, d: None)(session_id, dataset_id)
+    ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
     if not ds:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return ds
@@ -651,7 +684,7 @@ async def get_dataset(dataset_id: str, session: dict = Depends(get_current_sessi
 @app.delete("/api/invoices/datasets/{dataset_id}")
 async def delete_dataset(dataset_id: str, session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
-    ok = getattr(session_manager, "delete_dataset", lambda s, d: False)(session_id, dataset_id)
+    ok = session_manager.delete_dataset(session_id, dataset_id) if hasattr(session_manager, "delete_dataset") else False
     if not ok:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return {"success": True, "deleted": dataset_id}
@@ -703,6 +736,7 @@ async def demo_login():
         return {"access_token": "demo_token_12345", "token_type": "bearer"}
 
 
+# Include routers
 try:
     from src.api.endpoints import invoices
 
@@ -710,6 +744,8 @@ try:
     print("✅ Invoice routes loaded successfully")
 except Exception as e:
     print(f"❌ Could not load invoice routes: {e}")
+    import traceback
+    traceback.print_exc()
 
 
 # Guarded attempt to load v2 routes (depends on redis). If redis missing, skip gracefully.
@@ -729,7 +765,7 @@ except Exception as e:
 
 
 @app.get("/api/export/xlsx")
-async def export_xlsx():
+async def export_xlsx(dataset_id: Optional[str] = Query(None)):
     try:
         if not OPENPYXL_AVAILABLE:
             raise HTTPException(
@@ -752,7 +788,7 @@ async def export_xlsx():
 
 
 @app.get("/api/export/download-xlsx")
-async def download_xlsx():
+async def download_xlsx(dataset_id: Optional[str] = Query(None)):
     try:
         data_dir = "data"
         if not os.path.exists(data_dir):
@@ -773,7 +809,7 @@ async def download_xlsx():
 
 
 @app.get("/api/invoices/xlsx/stats")
-async def get_xlsx_stats():
+async def get_xlsx_stats(dataset_id: Optional[str] = Query(None)):
     try:
         if not PANDAS_AVAILABLE:
             return {
@@ -826,8 +862,60 @@ async def get_xlsx_stats():
 
 
 @app.get("/api/invoices/xlsx/data")
-async def get_xlsx_data():
+async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
+        if dataset_id:
+            # return dataset-derived representation if available
+            session_id = session.get("session_id") or session.get("user_id")
+            ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            parsed_result = ds.get("parsed_result", {})
+            rows = []
+            if parsed_result:
+                row = {
+                    "file_name": parsed_result.get("filename", ""),
+                    "vendor": parsed_result.get("vendor", ""),
+                    "invoice_number": parsed_result.get("invoice_number", ""),
+                    "invoice_date": parsed_result.get("invoice_date", ""),
+                    "subtotal": parsed_result.get("subtotal", 0),
+                    "shipping_amount": parsed_result.get("shipping_amount", 0),
+                    "tax_amount": parsed_result.get("tax_amount", 0),
+                    "total_amount": parsed_result.get("total_amount", 0),
+                    "currency": parsed_result.get("currency", ""),
+                    "parsed_timestamp": parsed_result.get("parsed_at", ""),
+                }
+                rows.append(row)
+
+            columns = [
+                "file_name", "vendor", "invoice_number", "invoice_date",
+                "subtotal", "shipping_amount", "tax_amount", "total_amount",
+                "currency", "parsed_timestamp"
+            ]
+
+            cleaned_rows = []
+            for r in rows:
+                cleaned_row = {}
+                for col in columns:
+                    value = r.get(col, "")
+                    if PANDAS_AVAILABLE and pd.isna(value) or value == "":
+                        cleaned_row[col] = ""
+                    elif isinstance(value, float):
+                        cleaned_row[col] = round(value, 2) if value != 0 else 0.0
+                    else:
+                        cleaned_row[col] = str(value)
+                cleaned_rows.append(cleaned_row)
+
+            return {
+                "filename": f"dataset_{dataset_id}.xlsx",
+                "columns": columns,
+                "rows": cleaned_rows,
+                "row_count": len(rows),
+                "file_size": 0,
+                "last_modified": time.time(),
+            }
+
+        # fallback to latest excel file on disk
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
         data_dir = "data"
@@ -880,44 +968,134 @@ def clean_data_for_json(data):
 
 
 @app.get("/api/invoices/tracking/dashboard")
-async def get_invoice_tracking_dashboard():
+async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
-        if not PANDAS_AVAILABLE:
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                    "error": "pandas not available",
+        if dataset_id:
+            session_id = session.get("session_id") or session.get("user_id")
+            ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            parsed_result = ds.get("parsed_result", {})
+            invoices = []
+            total_outstanding = 0
+            if parsed_result:
+                vendor_str = str(parsed_result.get("vendor", ""))
+                invoice_num_str = str(parsed_result.get("invoice_number", ""))
+                invoice_date = parsed_result.get("invoice_date")
+                if invoice_date and isinstance(invoice_date, str):
+                    try:
+                        invoice_date = datetime.strptime(invoice_date, "%Y-%m-%d")
+                    except:
+                        invoice_date = datetime.now()
+                else:
+                    invoice_date = datetime.now()
+                due_date = invoice_date + timedelta(days=30)
+                status = "sent"
+                today = datetime.now().date()
+                due_date_date = due_date.date()
+                if due_date_date < today:
+                    status = "overdue"
+                elif (due_date_date - today).days <= 7:
+                    status = "due"
+                if hash(vendor_str + invoice_num_str) % 3 == 0:
+                    status = "viewed"
+                amount = parsed_result.get("total_amount", 0)
+                if not isinstance(amount, (int, float)):
+                    try:
+                        amount = float(amount)
+                    except:
+                        amount = 0.0
+                invoice_data = {
+                    "id": f"inv_{hash(vendor_str + invoice_num_str)}",
+                    "vendor": vendor_str if vendor_str != "" else "Unknown Vendor",
+                    "invoice_number": invoice_num_str if invoice_num_str != "" else "N/A",
+                    "invoice_date": invoice_date.strftime("%Y-%m-%d"),
+                    "due_date": due_date.strftime("%Y-%m-%d"),
+                    "amount": amount,
+                    "status": status,
+                    "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
+                    "days_until_due": (due_date_date - today).days,
                 }
+                invoices.append(invoice_data)
+                if status in ["sent", "viewed", "due"]:
+                    total_outstanding += invoice_data["amount"]
+
+            status_counts = {
+                "sent": len([i for i in invoices if i["status"] == "sent"]),
+                "viewed": len([i for i in invoices if i["status"] == "viewed"]),
+                "due": len([i for i in invoices if i["status"] == "due"]),
+                "overdue": len([i for i in invoices if i["status"] == "overdue"]),
+            }
+            overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
+            health_percentage = (
+                ((total_outstanding - overdue_amount) / total_outstanding * 100)
+                if total_outstanding > 0
+                else 100
             )
+            collections_health = (
+                "healthy"
+                if health_percentage >= 80
+                else "warning" if health_percentage >= 60 else "critical"
+            )
+            cash_flow_calendar = []
+            for inv in invoices:
+                if inv.get("due_date") and inv["due_date"] != "N/A":
+                    try:
+                        inv_due_date = datetime.strptime(inv["due_date"], "%Y-%m-%d").date()
+                        existing = next((d for d in cash_flow_calendar if d["date"] == inv_due_date.strftime("%Y-%m-%d")), None)
+                        if existing:
+                            existing["amount"] += inv["amount"]
+                            existing["invoice_count"] += 1
+                        else:
+                            cash_flow_calendar.append({
+                                "date": inv_due_date.strftime("%Y-%m-%d"),
+                                "amount": inv["amount"],
+                                "invoice_count": 1,
+                            })
+                    except:
+                        continue
+            cash_flow_calendar.sort(key=lambda x: x["date"])
+            result = clean_data_for_json({
+                "total_outstanding": total_outstanding,
+                "invoices": invoices,
+                "status_counts": status_counts,
+                "collections_health": collections_health,
+                "cash_flow_calendar": cash_flow_calendar,
+                "health_percentage": health_percentage,
+            })
+            return result
+
+        # fallback to Excel file based dashboard
+        if not PANDAS_AVAILABLE:
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+                "error": "pandas not available",
+            })
         data_dir = "data"
         if not os.path.exists(data_dir):
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                }
-            )
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+            })
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         if not xlsx_files:
-            return clean_data_for_json(
-                {
-                    "total_outstanding": 0,
-                    "invoices": [],
-                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
-                    "collections_health": "healthy",
-                    "cash_flow_calendar": [],
-                    "health_percentage": 100,
-                }
-            )
+            return clean_data_for_json({
+                "total_outstanding": 0,
+                "invoices": [],
+                "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                "collections_health": "healthy",
+                "cash_flow_calendar": [],
+                "health_percentage": 100,
+            })
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
         df = pd.read_excel(latest_file)
         df = df.fillna("")
@@ -1112,54 +1290,29 @@ async def get_invoices():
     }
 
 
-@app.get("/api/debug/database")
-async def debug_database():
-    import socket
+# Serve SPA frontend at root and mount static assets (placed after routers)
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+INDEX_PATH = FRONTEND_DIR / "index.html"
 
-    result = {
-        "database_url_exists": bool(os.getenv("DATABASE_URL")),
-        "individual_vars": {
-            "host": bool(os.getenv("PGHOST") or os.getenv("host")),
-            "user": bool(os.getenv("PGUSER") or os.getenv("user")),
-            "password": bool(os.getenv("PGPASSWORD") or os.getenv("password")),
-        },
-        "dns_resolution": {},
-        "connection_test": {},
-    }
+if (FRONTEND_DIR / "static").exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
 
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
-        try:
-            parsed = urlparse(database_url)
-            hostname = parsed.hostname
-            result["hostname"] = hostname
 
-            try:
-                ip_address = socket.gethostbyname(hostname)
-                result["dns_resolution"] = {"success": True, "ip_address": ip_address}
-            except socket.gaierror as e:
-                result["dns_resolution"] = {
-                    "success": False,
-                    "error": str(e),
-                    "suggestion": "DNS resolution failed. Check network connectivity or try using Connection Pooler",
-                }
-        except Exception as e:
-            result["parse_error"] = str(e)
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    return await api_info()
 
-    if PSYCOPG2_AVAILABLE:
-        result["connection_test"]["psycopg2_available"] = True
-        try:
-            connection_result = test_supabase_connection()
-            result["connection_test"]["success"] = connection_result
-        except Exception as e:
-            result["connection_test"]["success"] = False
-            result["connection_test"]["error"] = str(e)
-    else:
-        result["connection_test"]["psycopg2_available"] = False
-        result["connection_test"]["success"] = False
-        result["connection_test"]["error"] = "psycopg2 not available"
 
-    return result
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    if any(full_path.startswith(p) for p in ("api", "share", "sitemap.xml", "robots.txt", "static", "favicon.ico")):
+        raise HTTPException(status_code=404)
+    if INDEX_PATH.exists():
+        return FileResponse(str(INDEX_PATH))
+    return await api_info()
 
 
 if __name__ == "__main__":
