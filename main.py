@@ -7,62 +7,80 @@ import tempfile
 import logging
 import uuid
 import importlib
+import threading
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import glob
 from datetime import datetime, timedelta
 import math
 from urllib.parse import urlparse
 
-print(f"🐍 Python executable: {sys.executable}")
-print(f"🐍 Python version: {sys.version}")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+logger.info(f"Python executable: {sys.executable}")
+logger.info(f"Python version: {sys.version}")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
 try:
-    import pandas as pd
+    from src.domain.models import InvoiceData, LineItem
+    from src.infrastructure.parsers.pdfplumber_parser import PdfPlumberParser
+    from src.domain.exceptions import ParsingFailedError
+    DOMAIN_PARSER_AVAILABLE = True
+    logger.info("Domain-driven parser architecture loaded successfully")
+except ImportError as e:
+    DOMAIN_PARSER_AVAILABLE = False
+    PdfPlumberParser = None
+    InvoiceData = None
+    ParsingFailedError = Exception
+    logger.warning(f"Domain parser unavailable: {e}")
+    logger.info("Using fallback parsing with basic pdfplumber extraction")
+except Exception as e:
+    DOMAIN_PARSER_AVAILABLE = False
+    PdfPlumberParser = None
+    InvoiceData = None
+    ParsingFailedError = Exception
+    logger.error(f"Domain parser failed to load: {e}")
 
+try:
+    import pandas as pd
     PANDAS_AVAILABLE = True
 except Exception:
     PANDAS_AVAILABLE = False
-    print("⚠️  pandas not available - Excel features will be limited")
+    logger.warning("pandas not available - Excel features will be limited")
 
 try:
     import psycopg2
-
     PSYCOPG2_AVAILABLE = True
 except Exception:
     PSYCOPG2_AVAILABLE = False
-    print("⚠️  psycopg2 not available - database features will be limited")
+    logger.warning("psycopg2 not available - database features will be limited")
 
 try:
     import pdfplumber
-
     PDFPLUMBER_AVAILABLE = True
 except Exception:
     PDFPLUMBER_AVAILABLE = False
-    print("⚠️  pdfplumber not available - PDF parsing features will be limited")
+    logger.warning("pdfplumber not available - PDF parsing features will be limited")
 
 try:
     from openpyxl import Workbook
-
     OPENPYXL_AVAILABLE = True
 except Exception:
     OPENPYXL_AVAILABLE = False
-    print("⚠️  openpyxl not available - Excel export features will be limited")
+    logger.warning("openpyxl not available - Excel export features will be limited")
 
 
 class SessionManager:
     def __init__(self):
-        # sessions keyed by session token (the cookie value)
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = 7200
 
@@ -73,7 +91,6 @@ class SessionManager:
             "user_id": f"anon_{secrets.token_hex(8)}",
             "invoices": [],
             "last_activity": time.time(),
-            # optional dataset support
             "datasets": [],
             "last_dataset_id": None,
         }
@@ -102,7 +119,6 @@ class SessionManager:
         session = self.get_session(session_id)
         return session.get("invoices", []) if session else []
 
-    # Dataset support
     def create_dataset(self, session_id: str, kind: str, files: list, parsed_result: dict) -> Optional[str]:
         session = self.get_session(session_id)
         if not session:
@@ -157,12 +173,13 @@ class CookieAuth:
         )
 
     def create_session_cookie(self, response: Response, session_id: str) -> None:
+        secure_cookies = os.getenv("ENV") == "production"
         response.set_cookie(
             key="invoice_session",
             value=session_id,
             max_age=30 * 24 * 3600,
             httponly=True,
-            secure=False,
+            secure=secure_cookies,
             samesite="lax",
         )
 
@@ -186,12 +203,10 @@ async def get_current_session(request: Request, response: Response) -> Dict[str,
         cookie_auth.create_session_cookie(response, session_id)
         session = session_manager.get_session(session_id)
 
-    # expose the session token on the returned dict for handlers to use
     if session is not None:
         session["session_id"] = session_id
 
     return session
-
 
 app = FastAPI(
     title="Invoice Parser Pro API",
@@ -213,7 +228,7 @@ def get_allowed_origins():
     frontend_url = os.getenv("FRONTEND_URL")
     if frontend_url:
         origins.append(frontend_url)
-        print(f"🌐 Added frontend URL from env: {frontend_url}")
+        logger.info(f"Added frontend URL from env: {frontend_url}")
 
     origins.extend(
         [
@@ -229,9 +244,7 @@ def get_allowed_origins():
 
 allowed_origins = get_allowed_origins()
 
-print(f"🌐 CORS enabled for {len(allowed_origins)} origins:")
-for origin in allowed_origins:
-    print(f"   ✅ {origin}")
+logger.info(f"CORS enabled for {len(allowed_origins)} origins")
 
 app.add_middleware(
     CORSMiddleware,
@@ -247,10 +260,12 @@ _initialized = False
 
 
 class XLSXExporter:
-    def __init__(self):
+    _global_lock = threading.Lock()
+
+    def __init__(self, session_id: str = "default"):
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
-        self.session_id = "default"
+        self.session_id = session_id
         self.xlsx_file_path = os.path.join(
             self.data_dir, f"parsed_invoices_{self.session_id}.xlsx"
         )
@@ -260,6 +275,7 @@ class XLSXExporter:
             "invoice_number",
             "invoice_date",
             "subtotal",
+            "discount_amount",
             "shipping_amount",
             "tax_amount",
             "total_amount",
@@ -276,57 +292,69 @@ class XLSXExporter:
             if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
                 return {"error": "pandas or openpyxl not available"}
 
-            print(f"📊 XLSX EXPORTER: Processing normalized data for {filename}")
-            print(f"💰 FINANCIAL DATA IN NORMALIZER:")
-            print(f"   subtotal: {normalized_data.get('subtotal')}")
-            print(f"   shipping_amount: {normalized_data.get('shipping_amount')}")
-            print(f"   tax_amount: {normalized_data.get('tax_amount')}")
-            print(f"   total_amount: {normalized_data.get('total_amount')}")
+            logger.info(f"XLSX EXPORTER: Processing invoice data for {filename}")
+            
+            line_items = normalized_data.get('line_items', [])
+            if not line_items:
+                line_items = [{
+                    'description': '',
+                    'quantity': 0,
+                    'unit_price': 0,
+                    'amount': 0
+                }]
 
-            row_data = {}
-            for column in self.columns:
-                value = normalized_data.get(column)
-                if value is None or value == "":
-                    row_data[column] = ""
-                elif isinstance(value, float):
-                    row_data[column] = value
+            rows = []
+            for line_item in line_items:
+                row_data = {
+                    'file_name': filename,
+                    'vendor': normalized_data.get('vendor', ''),
+                    'invoice_number': normalized_data.get('invoice_number', ''),
+                    'invoice_date': normalized_data.get('invoice_date', ''),
+                    'subtotal': normalized_data.get('subtotal', 0),
+                    'discount_amount': normalized_data.get('discount_amount', 0),
+                    'shipping_amount': normalized_data.get('shipping_amount', 0),
+                    'tax_amount': normalized_data.get('tax_amount', 0),
+                    'total_amount': normalized_data.get('total_amount', 0),
+                    'currency': normalized_data.get('currency', 'USD'),
+                    'line_item_description': line_item.get('description', ''),
+                    'line_item_quantity': line_item.get('quantity', 0),
+                    'line_item_unit_price': line_item.get('unit_price', 0),
+                    'line_item_amount': line_item.get('amount', 0),
+                    'parsed_timestamp': normalized_data.get('parsed_at', time.time()),
+                }
+                rows.append(row_data)
+
+            with self._global_lock:
+                if os.path.exists(self.xlsx_file_path):
+                    try:
+                        existing_df = pd.read_excel(self.xlsx_file_path)
+                        new_df = pd.DataFrame(rows, columns=self.columns)
+                        
+                        for col in self.columns:
+                            if col not in existing_df.columns:
+                                existing_df[col] = ""
+                            if col not in new_df.columns:
+                                new_df[col] = ""
+                        
+                        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                        combined_df = combined_df[self.columns]
+                    except Exception as e:
+                        logger.warning(f"Error reading existing Excel file, creating new: {e}")
+                        combined_df = pd.DataFrame(rows, columns=self.columns)
                 else:
-                    row_data[column] = str(value)
+                    combined_df = pd.DataFrame(rows, columns=self.columns)
 
-            if os.path.exists(self.xlsx_file_path):
-                try:
-                    existing_df = pd.read_excel(self.xlsx_file_path)
-                    new_df = pd.DataFrame([row_data])
-
-                    for col in self.columns:
-                        if col not in existing_df.columns:
-                            existing_df[col] = ""
-                        if col not in new_df.columns:
-                            new_df[col] = ""
-
-                    combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-                    combined_df = combined_df[self.columns]
-                except Exception as e:
-                    print(f"⚠️ Error reading existing file, creating new: {e}")
-                    combined_df = pd.DataFrame([row_data], columns=self.columns)
-            else:
-                combined_df = pd.DataFrame([row_data], columns=self.columns)
-
-            combined_df.to_excel(self.xlsx_file_path, index=False, engine="openpyxl")
-
+                combined_df.to_excel(self.xlsx_file_path, index=False, engine="openpyxl")
+            
             return {
                 "success": True,
-                "message": "Data appended to XLSX file",
+                "message": f"Data appended to XLSX ({len(rows)} rows)",
                 "filename": filename,
-                "file_path": self.xlsx_file_path,
-                "session_id": self.session_id,
+                "row_count": len(rows),
             }
 
         except Exception as e:
-            print(f"❌ XLSX export error: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"XLSX export error: {e}")
             return {"error": f"Failed to export to XLSX: {str(e)}"}
 
     def get_file_stats(self):
@@ -379,15 +407,14 @@ class XLSXExporter:
             return {"error": f"Failed to create file: {str(e)}"}
 
 
-def get_xlsx_exporter():
-    return XLSXExporter()
+def get_xlsx_exporter(session_id: str = "default"):
+    return XLSXExporter(session_id=session_id)
 
 
 def get_auth_service():
     class AuthService:
         def create_access_token(self, data):
             return "demo_token_12345"
-
     return AuthService()
 
 
@@ -397,16 +424,16 @@ def get_repository():
 
 def test_supabase_connection():
     if not PSYCOPG2_AVAILABLE:
-        print("⚠️  psycopg2 not available, skipping database connection")
+        logger.info("psycopg2 not available, skipping database connection")
         return False
 
     try:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
-            print("❌ No DATABASE_URL found in environment variables")
+            logger.info("No DATABASE_URL found in environment variables")
             return False
 
-        print("🔗 Testing database connection via DATABASE_URL...")
+        logger.info("Testing database connection via DATABASE_URL...")
         try:
             result = urlparse(database_url)
             hostname = result.hostname
@@ -415,31 +442,27 @@ def test_supabase_connection():
             port = result.port or 5432
             database = result.path[1:] if result.path else "postgres"
 
-            print(f"   Hostname: {hostname}")
-            print(f"   Port: {port}")
-            print(f"   Database: {database}")
-            print(f"   Username: {username}")
-            print(f"   Password: {'✓' if password else '✗'}")
+            logger.info(f"   Hostname: {hostname}")
+            logger.info(f"   Port: {port}")
+            logger.info(f"   Database: {database}")
+            logger.info(f"   Username: {username}")
+            logger.info(f"   Password: {'✓' if password else '✗'}")
 
             if hostname and "pooler" not in hostname and "supabase" in hostname:
-                print(
-                    "⚠️  Warning: Using direct Supabase URL instead of connection pooler"
-                )
-                print(
-                    "💡 Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-                )
+                logger.warning("Warning: Using direct Supabase URL instead of connection pooler")
+                logger.warning("Recommendation: Use format: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres")
         except Exception as parse_error:
-            print(f"❌ Failed to parse DATABASE_URL: {parse_error}")
+            logger.error(f"Failed to parse DATABASE_URL: {parse_error}")
             return False
 
         connection = psycopg2.connect(database_url, connect_timeout=10)
         cursor = connection.cursor()
         cursor.execute("SELECT NOW(), current_user, current_database();")
         result = cursor.fetchone()
-        print(f"✅ Database connected successfully")
-        print(f"   Server time: {result[0]}")
-        print(f"   User: {result[1]}")
-        print(f"   Database: {result[2]}")
+        logger.info("Database connected successfully")
+        logger.info(f"   Server time: {result[0]}")
+        logger.info(f"   User: {result[1]}")
+        logger.info(f"   Database: {result[2]}")
 
         cursor.close()
         connection.close()
@@ -447,27 +470,18 @@ def test_supabase_connection():
 
     except psycopg2.OperationalError as e:
         error_msg = str(e)
-        print(f"❌ Database connection failed: {error_msg}")
+        logger.error(f"Database connection failed: {error_msg}")
         if "Tenant or user not found" in error_msg:
-            print("🔧 Supabase Connection Issue Detected:")
-            print("   1. Your DATABASE_URL format appears incorrect")
-            print(
-                "   2. Check your Supabase dashboard for the correct connection string"
-            )
-            print("   3. Use Connection Pooler format:")
-            print(
-                "      postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-            )
-            print("   4. Replace [project-ref] with your actual project reference")
-            print(
-                "   5. Ensure your password doesn't have special characters that need URL encoding"
-            )
+            logger.error("Supabase Connection Issue Detected:")
+            logger.error("   1. Your DATABASE_URL format appears incorrect")
+            logger.error("   2. Check your Supabase dashboard for the correct connection string")
+            logger.error("   3. Use Connection Pooler format:")
+            logger.error("      postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres")
+            logger.error("   4. Replace [project-ref] with your actual project reference")
+            logger.error("   5. Ensure your password doesn't have special characters that need URL encoding")
         return False
     except Exception as e:
-        print(f"❌ Unexpected database error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Unexpected database error: {e}")
         return False
 
 
@@ -475,28 +489,25 @@ def initialize_app():
     global _initialized
     if _initialized:
         return
-    print("🚀 Starting Invoice Parser Pro API...")
+    logger.info("Starting Invoice Parser Pro API...")
     try:
         data_dir = "data"
         os.makedirs(data_dir, exist_ok=True)
-        print(f"📁 Data directory: {data_dir}")
+        logger.info(f"Data directory: {data_dir}")
 
         if os.getenv("DATABASE_URL") or os.getenv("PGHOST"):
             connection_result = test_supabase_connection()
             if connection_result:
-                print("✅ Database connection verified")
+                logger.info("Database connection verified")
             else:
-                print("⚠️  Database connection failed - using fallback storage")
+                logger.warning("Database connection failed - using fallback storage")
         else:
-            print("ℹ️  No database configuration found - using file-based storage")
+            logger.info("No database configuration found - using file-based storage")
 
         _initialized = True
-        print("🎉 Application initialized successfully")
+        logger.info("Application initialized successfully")
     except Exception as e:
-        print(f"❌ Initialization error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Initialization error: {e}")
 
 
 @app.middleware("http")
@@ -506,7 +517,6 @@ async def initialize_middleware(request, call_next):
     return response
 
 
-# API info moved to /api/info (root will serve SPA)
 @app.get("/api/info", tags=["info"])
 async def api_info():
     return {
@@ -518,6 +528,7 @@ async def api_info():
             "database_available": PSYCOPG2_AVAILABLE,
             "pdf_parsing_available": PDFPLUMBER_AVAILABLE,
             "excel_export_available": OPENPYXL_AVAILABLE,
+            "domain_parser_available": DOMAIN_PARSER_AVAILABLE,
         },
     }
 
@@ -543,80 +554,196 @@ async def parse_invoice_stateless(
 
         file_content = await file.read()
         filename = file.filename
-
-        if not PDFPLUMBER_AVAILABLE:
-            raise HTTPException(status_code=503, detail="PDF parsing not available")
+        logger.info(f"Processing invoice: {filename} ({len(file_content)} bytes)")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_file.write(file_content)
             temp_path = tmp_file.name
 
         try:
-            with pdfplumber.open(temp_path) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    text += page.extract_text() or ""
+            parsed_dict = None
+            parse_mode = "unknown"
+            parse_error = None
+            
+            if DOMAIN_PARSER_AVAILABLE and PdfPlumberParser is not None:
+                try:
+                    logger.info("Attempting domain-driven parsing with PdfPlumberParser...")
+                    parser = PdfPlumberParser()
+                    invoice_data = parser.parse(temp_path)
+                    
+                    if hasattr(invoice_data, 'to_dict'):
+                        parsed_dict = invoice_data.to_dict()
+                    else:
+                        parsed_dict = {
+                            "vendor": getattr(invoice_data, 'vendor', '') or 'Unknown Vendor',
+                            "invoice_number": getattr(invoice_data, 'invoice_number', '') or 'N/A',
+                            "invoice_date": getattr(invoice_data, 'invoice_date', datetime.now()).strftime("%Y-%m-%d"),
+                            "subtotal": float(getattr(invoice_data, 'subtotal', 0)),
+                            "discount_amount": float(getattr(invoice_data, 'discount_amount', 0)),
+                            "shipping_amount": float(getattr(invoice_data, 'shipping_amount', 0)),
+                            "tax_amount": float(getattr(invoice_data, 'tax_amount', 0)),
+                            "total_amount": float(getattr(invoice_data, 'total_amount', 0)),
+                            "currency": getattr(invoice_data, 'currency', 'USD'),
+                            "line_items": [
+                                {
+                                    "description": getattr(item, 'description', ''),
+                                    "quantity": float(getattr(item, 'quantity', 0)),
+                                    "unit_price": float(getattr(item, 'unit_price', 0)),
+                                    "amount": float(getattr(item, 'amount', 0)),
+                                }
+                                for item in getattr(invoice_data, 'line_items', [])
+                            ],
+                        }
+                    
+                    parse_mode = "domain_parser"
+                    logger.info(f"Domain parsing successful: {parsed_dict['vendor']} - ${parsed_dict['total_amount']}")
+                    
+                except ParsingFailedError as e:
+                    parse_error = str(e)
+                    logger.warning(f"ParsingFailedError: {e}")
+                except Exception as e:
+                    parse_error = str(e)
+                    logger.warning(f"Domain parser exception: {e}")
 
-            parsed_dict = {
-                "vendor": "Sample Vendor",
-                "invoice_number": "INV-001",
-                "invoice_date": datetime.now().strftime("%Y-%m-%d"),
-                "subtotal": 100.0,
-                "shipping_amount": 10.0,
-                "tax_amount": 8.0,
-                "total_amount": 118.0,
-                "currency": "USD",
-                "discount_amount": 0.0,
-                "line_items": [
-                    {
-                        "description": "Sample Item",
-                        "quantity": 1.0,
-                        "unit_price": 100.0,
-                        "amount": 100.0,
+            if parsed_dict is None and PDFPLUMBER_AVAILABLE:
+                try:
+                    logger.info("Falling back to enhanced pdfplumber extraction...")
+                    with pdfplumber.open(temp_path) as pdf:
+                        text = ""
+                        for i, page in enumerate(pdf.pages):
+                            page_text = page.extract_text() or ""
+                            text += page_text
+                    
+                    import re
+                    
+                    vendor_match = re.search(r'(?:From|Vendor|Bill From|Bill To):\s*([^\n]+)', text, re.IGNORECASE)
+                    vendor = vendor_match.group(1).strip() if vendor_match else "Unknown Vendor"
+                    
+                    vendor = re.sub(r'(?i)invoice|bill\s*to|ship\s*to[:]?\s*', '', vendor).strip()
+                    
+                    inv_num_patterns = [
+                        r'(?:Invoice|INV|#)\s*(?:Number|No|#)?:?\s*([A-Z0-9-]+)',
+                        r'(\d{4,})',
+                        r'IN[-\s]*(\d+)',
+                    ]
+                    
+                    invoice_number = "N/A"
+                    for pattern in inv_num_patterns:
+                        match = re.search(pattern, text, re.IGNORECASE)
+                        if match:
+                            invoice_number = match.group(1).strip()
+                            break
+                    
+                    total_match = re.search(r'(?:Total|Balance Due|Amount Due)[:\s]*\$?\s*([\d,]+\.?\d{0,2})', text, re.IGNORECASE)
+                    subtotal_match = re.search(r'(?:Subtotal|Amount)[:\s]*\$?\s*([\d,]+\.?\d{0,2})', text, re.IGNORECASE)
+                    shipping_match = re.search(r'(?:Shipping|Freight)[:\s]*\$?\s*([\d,]+\.?\d{0,2})', text, re.IGNORECASE)
+                    tax_match = re.search(r'(?:Tax|VAT)[:\s]*\$?\s*([\d,]+\.?\d{0,2})', text, re.IGNORECASE)
+                    
+                    def parse_amount(match):
+                        if not match:
+                            return 0.0
+                        try:
+                            return float(match.group(1).replace(',', ''))
+                        except:
+                            return 0.0
+                    
+                    total_amount = parse_amount(total_match) or parse_amount(subtotal_match)
+                    subtotal = parse_amount(subtotal_match) or total_amount
+                    shipping = parse_amount(shipping_match)
+                    tax = parse_amount(tax_match)
+                    
+                    date_match = re.search(r'(?:Date|Invoice Date):\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
+                    invoice_date = date_match.group(1).strip() if date_match else datetime.now().strftime("%Y-%m-%d")
+                    
+                    parsed_dict = {
+                        "vendor": vendor,
+                        "invoice_number": invoice_number,
+                        "invoice_date": invoice_date,
+                        "subtotal": subtotal,
+                        "discount_amount": 0.0,
+                        "shipping_amount": shipping,
+                        "tax_amount": tax,
+                        "total_amount": total_amount,
+                        "currency": "USD",
+                        "line_items": [],
                     }
-                ],
-                "filename": filename,
-                "parsed_at": time.time(),
-            }
+                    
+                    parse_mode = "enhanced_fallback"
+                    logger.info(f"Enhanced fallback successful: {vendor} - ${total_amount}")
+                    
+                except Exception as e:
+                    parse_error = str(e)
+                    logger.warning(f"Enhanced fallback failed: {e}")
 
-            # use the session token as the storage key
+            if parsed_dict is None:
+                logger.info("Using basic fallback with sample data")
+                parsed_dict = {
+                    "vendor": "Sample Vendor",
+                    "invoice_number": f"INV-{int(time.time() % 10000)}",
+                    "invoice_date": datetime.now().strftime("%Y-%m-%d"),
+                    "subtotal": 100.0,
+                    "discount_amount": 0.0,
+                    "shipping_amount": 10.0,
+                    "tax_amount": 8.0,
+                    "total_amount": 118.0,
+                    "currency": "USD",
+                    "line_items": [
+                        {
+                            "description": "Sample Item",
+                            "quantity": 1.0,
+                            "unit_price": 100.0,
+                            "amount": 100.0,
+                        }
+                    ],
+                }
+                parse_mode = "basic_fallback"
+
+            parsed_dict["filename"] = filename
+            parsed_dict["parsed_at"] = time.time()
+            parsed_dict["parse_mode"] = parse_mode
+            if parse_error:
+                parsed_dict["parse_error"] = parse_error
+
             session_id = session.get("session_id") or session.get("user_id")
             success = session_manager.add_invoice(session_id, parsed_dict)
 
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
 
-            # create dataset (optional)
+            dataset_id = None
             if hasattr(session_manager, "create_dataset"):
-                ds_id = session_manager.create_dataset(session_id, "single", [filename], parsed_dict)
-            else:
-                ds_id = None
+                dataset_id = session_manager.create_dataset(
+                    session_id=session_id,
+                    kind="single",
+                    files=[filename],
+                    parsed_result=parsed_dict
+                )
 
-            xlsx_exporter = get_xlsx_exporter()
+            xlsx_exporter = get_xlsx_exporter(session_id=session_id)
             export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
 
             return {
                 "success": True,
                 "data": parsed_dict,
-                "dataset_id": ds_id,
-                "session_invoices_count": len(session.get("invoices", [])),
+                "dataset_id": dataset_id,
+                "session_invoices_count": len(session_manager.get_invoices(session_id)),
                 "export_result": export_result,
-                "message": "Invoice parsed and stored in session",
+                "parse_mode": parse_mode,
+                "message": f"Invoice parsed using {parse_mode.replace('_', ' ')}",
             }
 
         finally:
             if os.path.exists(temp_path):
-                os.unlink(temp_path)
+                try:
+                    os.unlink(temp_path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove temp file: {e}")
 
     except HTTPException:
-        # re-raise intended HTTP errors
         raise
-    except Exception:
-        import traceback
-
-        logging.exception("Error parsing invoice")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Internal server error while parsing the invoice")
+    except Exception as e:
+        logger.exception(f"Critical error in parse endpoint")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.get("/api/invoices/session")
@@ -635,7 +762,7 @@ async def export_session_invoices(session: dict = Depends(get_current_session)):
         if not invoices:
             raise HTTPException(status_code=404, detail="No invoices in session")
 
-        exporter = XLSXExporter()
+        exporter = XLSXExporter(session_id=session_id)
 
         for invoice in invoices:
             exporter.append_normalized_data(invoice, invoice["filename"])
@@ -652,7 +779,7 @@ async def export_session_invoices(session: dict = Depends(get_current_session)):
         )
 
     except Exception as e:
-        logging.error(f"Error exporting session invoices: {str(e)}")
+        logger.error(f"Error exporting session invoices: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
@@ -664,7 +791,6 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
     return {"message": "Session cleared", "invoices_count": 0}
 
 
-# Dataset endpoints (optional - safe when SessionManager includes dataset support)
 @app.get("/api/invoices/datasets")
 async def list_datasets(session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
@@ -724,44 +850,35 @@ async def debug_database_test():
 @app.post("/api/auth/demo-login")
 async def demo_login():
     try:
-        from src.api.dependencies import get_auth_service
-
         auth_service = get_auth_service()
         token = auth_service.create_access_token(
             {"user_id": "demo_user", "username": "demo"}
         )
         return {"access_token": token, "token_type": "bearer"}
     except Exception as e:
-        print(f"Using fallback auth: {e}")
+        logger.warning(f"Using fallback auth: {e}")
         return {"access_token": "demo_token_12345", "token_type": "bearer"}
 
 
-# Include routers
 try:
     from src.api.endpoints import invoices
-
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
-    print("✅ Invoice routes loaded successfully")
+    logger.info("Invoice routes loaded successfully")
 except Exception as e:
-    print(f"❌ Could not load invoice routes: {e}")
-    import traceback
-    traceback.print_exc()
+    logger.warning(f"Could not load invoice routes: {e}")
 
 
-# Guarded attempt to load v2 routes (depends on redis). If redis missing, skip gracefully.
 try:
     try:
-        import redis  # noqa: F401
+        import redis
     except Exception:
-        print("⚠️ redis not available; skipping v2 invoice routes (install redis or set REDIS_URL to enable)")
+        logger.info("redis not available; skipping v2 invoice routes (install redis or set REDIS_URL to enable)")
     else:
         invoices_v2_mod = importlib.import_module("api.invoices_v2")
         app.include_router(invoices_v2_mod.router)
-        print("✅ v2 Invoice routes loaded successfully")
+        logger.info("v2 Invoice routes loaded successfully")
 except Exception as e:
-    import traceback
-    print(f"❌ Could not load v2 invoice routes: {e}")
-    traceback.print_exc()
+    logger.warning(f"Could not load v2 invoice routes: {e}")
 
 
 @app.get("/api/export/xlsx")
@@ -865,7 +982,6 @@ async def get_xlsx_stats(dataset_id: Optional[str] = Query(None)):
 async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict = Depends(get_current_session)):
     try:
         if dataset_id:
-            # return dataset-derived representation if available
             session_id = session.get("session_id") or session.get("user_id")
             ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
             if not ds:
@@ -898,7 +1014,7 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
                 cleaned_row = {}
                 for col in columns:
                     value = r.get(col, "")
-                    if PANDAS_AVAILABLE and pd.isna(value) or value == "":
+                    if (PANDAS_AVAILABLE and pd.isna(value)) or value == "":
                         cleaned_row[col] = ""
                     elif isinstance(value, float):
                         cleaned_row[col] = round(value, 2) if value != 0 else 0.0
@@ -915,7 +1031,6 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
                 "last_modified": time.time(),
             }
 
-        # fallback to latest excel file on disk
         if not PANDAS_AVAILABLE:
             raise HTTPException(status_code=500, detail="pandas not available")
         data_dir = "data"
@@ -1065,7 +1180,6 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
             })
             return result
 
-        # fallback to Excel file based dashboard
         if not PANDAS_AVAILABLE:
             return clean_data_for_json({
                 "total_outstanding": 0,
@@ -1230,10 +1344,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
         )
         return result
     except Exception as e:
-        print(f"Dashboard error: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Dashboard error: {str(e)}")
         return clean_data_for_json(
             {
                 "total_outstanding": 0,
@@ -1290,7 +1401,6 @@ async def get_invoices():
     }
 
 
-# Serve SPA frontend at root and mount static assets (placed after routers)
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 INDEX_PATH = FRONTEND_DIR / "index.html"
@@ -1317,5 +1427,4 @@ async def spa_fallback(full_path: str):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
