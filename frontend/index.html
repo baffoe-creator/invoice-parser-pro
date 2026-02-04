@@ -31,6 +31,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @keyframes move {
             100% {
@@ -218,7 +219,7 @@
         }
 
         .upload-area {
-            border: 1px solid #e1e5e9;
+            border: 2px dashed #e1e5e9;
             border-radius: 12px;
             padding: 50px 30px;
             text-align: center;
@@ -296,7 +297,7 @@
 
         button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: rgb(10, 7, 7);
+            color: white;
             border: none;
             padding: 12px 32px;
             border-radius: 8px;
@@ -712,41 +713,165 @@
             margin-bottom: 0;
         }
 
-        /* Dataset Selector Styles */
+        /* Modern Dataset Selector Styles */
         .dataset-selector-container {
             display: flex;
-            gap: 8px;
+            gap: 12px;
             align-items: center;
             justify-content: center;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+            border-radius: 12px;
+            border: 1px solid #e6e9f8;
+            position: relative;
+            z-index: 1;
         }
 
         .dataset-selector {
-            padding: 6px 10px;
-            border-radius: 6px;
-            border: 1px solid #e6e9f8;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
             background: white;
-            min-width: 200px;
+            min-width: 300px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            color: #333;
+            transition: all 0.3s ease;
+        }
+
+        .dataset-selector:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .dataset-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
         }
 
         .dataset-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
             font-weight: 600;
-            margin-right: 6px;
+            margin-right: 10px;
         }
 
         .badge-single {
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
 
         .badge-bulk {
-            background: #28a745;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             color: white;
+        }
+
+        .dataset-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .dataset-details {
+            font-size: 11px;
+            color: #666;
+            margin-left: auto;
+            opacity: 0.8;
+        }
+
+        .dataset-action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .refresh-btn-small {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            border: none;
+        }
+
+        .delete-btn-small {
+            background: transparent;
+            color: #dc3545;
+            border: 1px solid #f5c6cb;
+        }
+
+        .delete-btn-small:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .dataset-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .dataset-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .dataset-meta {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Tooltip for dataset info */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            font-weight: normal;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
         }
     </style>
 </head>
@@ -764,56 +889,68 @@
     </div>
 
     <div class="container">
-        <h1>📄 Invoice Parser Pro</h1>
+        <h1><i class="fas fa-file-invoice-dollar"></i> Invoice Parser Pro</h1>
         <p class="subtitle">Upload PDF invoices and extract structured data with Excel export</p>
 
         <div id="authStatus" class="status" style="display: none;"></div>
 
         <div class="tab-container">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('single')">Single File</button>
-                <button class="tab" onclick="switchTab('bulk')">Bulk Upload</button>
-                <button class="tab" onclick="switchTab('excel-viewer')">Excel Viewer</button>
-                <button class="tab" onclick="switchTab('invoice-tracking')">Invoice Tracking</button>
+                <button class="tab active" onclick="switchTab('single')"><i class="fas fa-file-pdf"></i> Single File</button>
+                <button class="tab" onclick="switchTab('bulk')"><i class="fas fa-folder-open"></i> Bulk Upload</button>
+                <button class="tab" onclick="switchTab('excel-viewer')"><i class="fas fa-table"></i> Excel Viewer</button>
+                <button class="tab" onclick="switchTab('invoice-tracking')"><i class="fas fa-chart-line"></i> Invoice Tracking</button>
             </div>
 
             <div id="single-tab" class="tab-content active">
                 <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">📁</div>
+                    <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
                     <p><strong>Click to upload</strong> or drag and drop</p>
                     <p style="color: #999; font-size: 14px; margin-top: 8px;">PDF files only</p>
                     <input type="file" id="fileInput" accept=".pdf">
                 </div>
                 <div class="button-group">
-                    <button id="parseBtn" disabled>Parse Invoice</button>
+                    <button id="parseBtn" disabled><i class="fas fa-magic"></i> Parse Invoice</button>
                 </div>
             </div>
 
             <div id="bulk-tab" class="tab-content">
                 <div class="upload-area bulk" id="bulkUploadArea">
-                    <div class="upload-icon">📂</div>
+                    <div class="upload-icon"><i class="fas fa-folder-plus"></i></div>
                     <p><strong>Click to upload multiple files</strong> or drag and drop</p>
                     <p style="color: #999; font-size: 14px; margin-top: 8px;">Select multiple PDF files</p>
                     <input type="file" id="bulkFileInput" accept=".pdf" multiple>
                 </div>
                 <div id="fileList" class="file-list" style="display: none;"></div>
                 <div class="button-group">
-                    <button id="bulkParseBtn" disabled>Parse All Invoices</button>
+                    <button id="bulkParseBtn" disabled><i class="fas fa-bolt"></i> Parse All Invoices</button>
                 </div>
             </div>
 
             <div id="excel-viewer-tab" class="tab-content">
-                <!-- Dataset Selector UI -->
+                <!-- Modern Dataset Selector -->
                 <div class="dataset-selector-container">
-                    <select id="datasetSelector" class="dataset-selector">
-                        <option value="">Latest dataset</option>
-                    </select>
-                    <button id="refreshDatasets" style="padding:6px 10px;border-radius:6px;">Refresh</button>
-                    <button id="deleteDataset" style="padding:6px 10px;border-radius:6px;background:transparent;color:#c00;border:1px solid #f5c6cb;border-radius:6px;">Delete</button>
+                    <div class="dataset-header">
+                        <div class="dataset-title"><i class="fas fa-database"></i> Dataset Manager</div>
+                        <div class="dataset-meta">
+                            <span class="meta-item"><i class="fas fa-clock"></i> Select dataset to view</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; width: 100%; align-items: center;">
+                        <select id="datasetSelector" class="dataset-selector">
+                            <option value="">Latest dataset</option>
+                        </select>
+                        <button id="refreshDatasets" class="dataset-action-btn refresh-btn-small">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="deleteDataset" class="dataset-action-btn delete-btn-small">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">📊</div>
+                    <div class="feature-icon"><i class="fas fa-chart-bar"></i></div>
                     <div class="feature-title">Excel Data Analysis</div>
                     <div class="feature-description">
                         View and analyze all parsed invoice data in a structured table format.
@@ -822,8 +959,8 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="refresh-btn" onclick="loadExcelData()">🔄 Refresh Data</button>
-                    <button class="download-btn" onclick="downloadXLSX()">📥 Download Excel</button>
+                    <button class="refresh-btn" onclick="loadExcelData()"><i class="fas fa-sync-alt"></i> Refresh Data</button>
+                    <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel</button>
                 </div>
 
                 <div class="excel-viewer-container">
@@ -835,7 +972,7 @@
                     <div id="excelStats" class="excel-stats" style="display: none;"></div>
 
                     <div id="excelData" style="display: none;">
-                        <h3 style="margin-bottom: 16px; text-align: left;">Parsed Invoice Data</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice Data</h3>
                         <div class="excel-table-container">
                             <table class="excel-table" id="excelTable">
                             </table>
@@ -843,7 +980,7 @@
                     </div>
 
                     <div id="noExcelData" class="no-data-message" style="display: none;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                        <div style="font-size: 48px; margin-bottom: 16px;"><i class="fas fa-database"></i></div>
                         <h3>No Excel Data Available</h3>
                         <p style="margin-top: 8px; color: #666;">
                             Parse some invoices first to view the data here.<br>
@@ -854,17 +991,29 @@
             </div>
 
             <div id="invoice-tracking-tab" class="tab-content">
-                <!-- Dataset Selector UI -->
+                <!-- Modern Dataset Selector -->
                 <div class="dataset-selector-container">
-                    <select id="datasetSelectorTracking" class="dataset-selector">
-                        <option value="">Latest dataset</option>
-                    </select>
-                    <button id="refreshDatasetsTracking" style="padding:6px 10px;border-radius:6px;">Refresh</button>
-                    <button id="deleteDatasetTracking" style="padding:6px 10px;border-radius:6px;background:transparent;color:#c00;border:1px solid #f5c6cb;border-radius:6px;">Delete</button>
+                    <div class="dataset-header">
+                        <div class="dataset-title"><i class="fas fa-chart-line"></i> Tracking Dashboard</div>
+                        <div class="dataset-meta">
+                            <span class="meta-item"><i class="fas fa-chart-pie"></i> Select dataset to track</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; width: 100%; align-items: center;">
+                        <select id="datasetSelectorTracking" class="dataset-selector">
+                            <option value="">Latest dataset</option>
+                        </select>
+                        <button id="refreshDatasetsTracking" class="dataset-action-btn refresh-btn-small">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="deleteDatasetTracking" class="dataset-action-btn delete-btn-small">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">💰</div>
+                    <div class="feature-icon"><i class="fas fa-wallet"></i></div>
                     <div class="feature-title">Invoice Tracking Dashboard</div>
                     <div class="feature-description">
                         Monitor payment status, track receivables, and manage your cash flow.
@@ -873,8 +1022,8 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="refresh-btn" onclick="loadInvoiceTrackingData()">🔄 Refresh Dashboard</button>
-                    <button class="download-btn" onclick="exportTrackingReport()">📊 Export Report</button>
+                    <button class="refresh-btn" onclick="loadInvoiceTrackingData()"><i class="fas fa-sync-alt"></i> Refresh Dashboard</button>
+                    <button class="download-btn" onclick="exportTrackingReport()"><i class="fas fa-file-export"></i> Export Report</button>
                 </div>
 
                 <div class="excel-viewer-container">
@@ -886,11 +1035,11 @@
                     <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
 
                     <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;">Payment Status Pipeline</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment Status Pipeline</h3>
                         <div class="pipeline-container">
                             <div class="pipeline-stage sent-stage">
                                 <div class="stage-header" style="background: #667eea; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;">📨 Sent</h4>
+                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-paper-plane"></i> Sent</h4>
                                 </div>
                                 <div class="stage-content">
                                     <div id="sentInvoices"></div>
@@ -898,7 +1047,7 @@
                             </div>
                             <div class="pipeline-stage viewed-stage">
                                 <div class="stage-header" style="background: #17a2b8; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;">👀 Viewed</h4>
+                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-eye"></i> Viewed</h4>
                                 </div>
                                 <div class="stage-content">
                                     <div id="viewedInvoices"></div>
@@ -906,7 +1055,7 @@
                             </div>
                             <div class="pipeline-stage due-stage">
                                 <div class="stage-header" style="background: #ffc107; color: black;">
-                                    <h4 style="margin: 0; font-size: 14px;">📅 Due Soon</h4>
+                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-clock"></i> Due Soon</h4>
                                 </div>
                                 <div class="stage-content">
                                     <div id="dueInvoices"></div>
@@ -914,7 +1063,7 @@
                             </div>
                             <div class="pipeline-stage overdue-stage">
                                 <div class="stage-header" style="background: #dc3545; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;">⚠️ Overdue</h4>
+                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-exclamation-triangle"></i> Overdue</h4>
                                 </div>
                                 <div class="stage-content">
                                     <div id="overdueInvoices"></div>
@@ -924,7 +1073,7 @@
                     </div>
 
                     <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;">Expected Cash Flow</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i> Expected Cash Flow</h3>
                         <div class="excel-table-container">
                             <table class="excel-table" id="cashFlowTable">
                                 <thead>
@@ -942,7 +1091,7 @@
                     </div>
 
                     <div id="invoiceList" style="display: none;">
-                        <h3 style="margin-bottom: 16px; text-align: left;">All Invoices</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All Invoices</h3>
                         <div class="excel-table-container">
                             <table class="excel-table" id="invoiceTrackingTable">
                                 <thead>
@@ -964,7 +1113,7 @@
                     </div>
 
                     <div id="noTrackingData" class="no-data-message" style="display: none;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">💰</div>
+                        <div style="font-size: 48px; margin-bottom: 16px;"><i class="fas fa-chart-line"></i></div>
                         <h3>No Invoice Data Available</h3>
                         <p style="margin-top: 8px; color: #666;">
                             Parse some invoices first to track payments and receivables.<br>
@@ -981,16 +1130,16 @@
         </div>
 
         <div class="results" id="results">
-            <h2>✅ Parsed Results</h2>
+            <h2><i class="fas fa-check-circle"></i> Parsed Results</h2>
             <div class="metadata" id="metadata"></div>
             <div class="line-items" id="lineItems"></div>
         </div>
 
         <div class="export-section" id="exportSection" style="display: none;">
-            <h3>📊 Export Data - Excel Format</h3>
+            <h3><i class="fas fa-file-excel"></i> Export Data - Excel Format</h3>
             <p style="color: #666; margin-bottom: 12px;">Download parsed invoices as Excel file with structured data</p>
             <div class="export-buttons">
-                <button class="download-btn" onclick="downloadXLSX()">📥 Download Excel File</button>
+                <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel File</button>
             </div>
         </div>
     </div>
@@ -999,22 +1148,21 @@
     <div id="donatePill" style="position:fixed;right:16px;bottom:16px;z-index:9999;">
         <button id="donateBtn" title="Support this project"
             style="background:#111;color:#fff;border:0;padding:10px 12px;border-radius:999px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.15);cursor:pointer;">
-            Support (ETH)
+            <i class="fas fa-heart"></i> Support (ETH)
         </button>
     </div>
     <!-- Donate modal -->
     <div id="donateModal"
         style="display:none;position:fixed;right:16px;bottom:72px;background:#fff;border-radius:8px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,0.2);z-index:10000;">
-        <div style="font-weight:700;margin-bottom:8px;">Support Invoice Parser Pro</div>
+        <div style="font-weight:700;margin-bottom:8px;"><i class="fas fa-donate"></i> Support Invoice Parser Pro</div>
         <div style="font-family:monospace;background:#f6f6f6;padding:8px;border-radius:6px;margin-bottom:8px;">
             0x6551f7a3c40208d5b4395387a2Afe019C915A458</div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button id="copyEth"
-                style="padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;">Copy
-                address</button>
+                style="padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;"><i class="fas fa-copy"></i> Copy</button>
             <a id="openWallet"
                 style="padding:8px 10px;border-radius:6px;background:#0066ff;color:#fff;text-decoration:none;" href="#"
-                target="_blank">Open wallet</a>
+                target="_blank"><i class="fas fa-wallet"></i> Wallet</a>
         </div>
     </div>
 
@@ -1076,8 +1224,8 @@
         copyEth.addEventListener('click', async () => {
             try {
                 await navigator.clipboard.writeText(ETH_ADDR);
-                copyEth.textContent = 'Copied';
-                setTimeout(() => copyEth.textContent = 'Copy address', 1500);
+                copyEth.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => copyEth.innerHTML = '<i class="fas fa-copy"></i> Copy', 1500);
             } catch (err) {
                 console.error('Failed to copy:', err);
                 // Fallback for older browsers
@@ -1087,8 +1235,8 @@
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                copyEth.textContent = 'Copied';
-                setTimeout(() => copyEth.textContent = 'Copy address', 1500);
+                copyEth.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => copyEth.innerHTML = '<i class="fas fa-copy"></i> Copy', 1500);
             }
         });
 
@@ -1109,6 +1257,18 @@
             formData.append('file', file);
 
             const response = await fetch('/api/invoices/parse-stateless', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            return response.json();
+        }
+
+        async function parseBulkInvoices(files) {
+            const formData = new FormData();
+            files.forEach(file => formData.append('files', file));
+
+            const response = await fetch('/api/invoices/parse-bulk', {
                 method: 'POST',
                 body: formData,
                 credentials: 'include'
@@ -1146,16 +1306,37 @@
                 const list = await fetchDatasets();
                 const sel = document.getElementById('datasetSelector');
                 sel.innerHTML = `<option value="">Latest dataset</option>`;
+                
                 list.forEach(ds => {
-                    const label = `${ds.kind.toUpperCase()} - ${ds.files?.length || 0} file(s) - ${new Date(ds.created_at * 1000).toLocaleString()}`;
+                    const kind = ds.kind || 'single';
+                    const fileCount = ds.file_count || ds.files?.length || 0;
+                    const totalAmount = ds.total_amount || 0;
+                    const date = new Date(ds.created_at * 1000).toLocaleString();
+                    
+                    const label = `${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'} - ${fileCount} file(s) - $${totalAmount.toFixed(2)} - ${date}`;
                     const opt = document.createElement('option');
                     opt.value = ds.id;
                     opt.textContent = label;
+                    
+                    // Add HTML for better display
+                    opt.innerHTML = `
+                        <div class="dataset-option">
+                            <div class="dataset-info">
+                                <span class="dataset-badge ${kind === 'bulk' ? 'badge-bulk' : 'badge-single'}">
+                                    ${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'}
+                                </span>
+                                <span>${fileCount} file(s)</span>
+                                <span class="dataset-details">$${totalAmount.toFixed(2)} • ${date}</span>
+                            </div>
+                        </div>
+                    `;
+                    
                     sel.appendChild(opt);
                 });
-                // select last_dataset_id if none selected
-                if (!currentDatasetId && list.length>0) {
-                    currentDatasetId = list[list.length-1].id;
+                
+                // Select last_dataset_id if none selected
+                if (!currentDatasetId && list.length > 0) {
+                    currentDatasetId = list[0].id; // Newest first
                     sel.value = currentDatasetId;
                 }
             } catch (error) {
@@ -1168,16 +1349,37 @@
                 const list = await fetchDatasets();
                 const sel = document.getElementById('datasetSelectorTracking');
                 sel.innerHTML = `<option value="">Latest dataset</option>`;
+                
                 list.forEach(ds => {
-                    const label = `${ds.kind.toUpperCase()} - ${ds.files?.length || 0} file(s) - ${new Date(ds.created_at * 1000).toLocaleString()}`;
+                    const kind = ds.kind || 'single';
+                    const fileCount = ds.file_count || ds.files?.length || 0;
+                    const totalAmount = ds.total_amount || 0;
+                    const date = new Date(ds.created_at * 1000).toLocaleString();
+                    
+                    const label = `${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'} - ${fileCount} file(s) - $${totalAmount.toFixed(2)} - ${date}`;
                     const opt = document.createElement('option');
                     opt.value = ds.id;
                     opt.textContent = label;
+                    
+                    // Add HTML for better display
+                    opt.innerHTML = `
+                        <div class="dataset-option">
+                            <div class="dataset-info">
+                                <span class="dataset-badge ${kind === 'bulk' ? 'badge-bulk' : 'badge-single'}">
+                                    ${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'}
+                                </span>
+                                <span>${fileCount} file(s)</span>
+                                <span class="dataset-details">$${totalAmount.toFixed(2)} • ${date}</span>
+                            </div>
+                        </div>
+                    `;
+                    
                     sel.appendChild(opt);
                 });
-                // select last_dataset_id if none selected
-                if (!currentDatasetIdTracking && list.length>0) {
-                    currentDatasetIdTracking = list[list.length-1].id;
+                
+                // Select last_dataset_id if none selected
+                if (!currentDatasetIdTracking && list.length > 0) {
+                    currentDatasetIdTracking = list[0].id; // Newest first
                     sel.value = currentDatasetIdTracking;
                 }
             } catch (error) {
@@ -1186,8 +1388,15 @@
         }
 
         // Setup dataset selector event listeners
-        document.getElementById('refreshDatasets')?.addEventListener('click', () => populateDatasetSelector());
-        document.getElementById('refreshDatasetsTracking')?.addEventListener('click', () => populateDatasetSelectorTracking());
+        document.getElementById('refreshDatasets')?.addEventListener('click', () => {
+            populateDatasetSelector();
+            loadExcelData();
+        });
+        
+        document.getElementById('refreshDatasetsTracking')?.addEventListener('click', () => {
+            populateDatasetSelectorTracking();
+            loadInvoiceTrackingData();
+        });
 
         datasetSelector?.addEventListener('change', (e) => {
             currentDatasetId = e.target.value;
@@ -1200,36 +1409,48 @@
         });
 
         document.getElementById('deleteDataset')?.addEventListener('click', async () => {
-            if (!currentDatasetId) { alert('Select a dataset first'); return; }
-            if (!confirm('Delete selected dataset? This cannot be undone.')) return;
+            if (!currentDatasetId) { 
+                alert('Please select a dataset first'); 
+                return; 
+            }
+            if (!confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) return;
+            
             const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetId}`, { 
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${currentToken}` }
+                headers: { 'Authorization': `Bearer ${currentToken}` },
+                credentials: 'include'
             });
+            
             if (res.ok) {
-                alert('Dataset deleted');
+                alert('Dataset deleted successfully');
                 currentDatasetId = '';
                 await populateDatasetSelector();
                 loadExcelData();
             } else {
-                alert('Delete failed');
+                alert('Failed to delete dataset');
             }
         });
 
         document.getElementById('deleteDatasetTracking')?.addEventListener('click', async () => {
-            if (!currentDatasetIdTracking) { alert('Select a dataset first'); return; }
-            if (!confirm('Delete selected dataset? This cannot be undone.')) return;
+            if (!currentDatasetIdTracking) { 
+                alert('Please select a dataset first'); 
+                return; 
+            }
+            if (!confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) return;
+            
             const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetIdTracking}`, { 
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${currentToken}` }
+                headers: { 'Authorization': `Bearer ${currentToken}` },
+                credentials: 'include'
             });
+            
             if (res.ok) {
-                alert('Dataset deleted');
+                alert('Dataset deleted successfully');
                 currentDatasetIdTracking = '';
                 await populateDatasetSelectorTracking();
                 loadInvoiceTrackingData();
             } else {
-                alert('Delete failed');
+                alert('Failed to delete dataset');
             }
         });
 
@@ -1281,7 +1502,8 @@
 
                 const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
                 const response = await fetch(`${API_URL}/invoices/xlsx/data${datasetQuery}`, {
-                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                    headers: { 'Authorization': `Bearer ${currentToken}` },
+                    credentials: 'include'
                 });
 
                 if (response.status === 401) {
@@ -1311,23 +1533,23 @@
             excelLoading.style.display = 'none';
 
             const statsHTML = `
-        <div class="stat-card">
-            <div class="stat-value">${data.row_count}</div>
-            <div class="stat-label">Total Invoices</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.columns.length}</div>
-            <div class="stat-label">Data Fields</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${formatFileSize(data.file_size)}</div>
-            <div class="stat-label">File Size</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${new Date(data.last_modified * 1000).toLocaleDateString()}</div>
-            <div class="stat-label">Last Updated</div>
-        </div>
-    `;
+                <div class="stat-card">
+                    <div class="stat-value">${data.row_count}</div>
+                    <div class="stat-label">Total Invoices</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${data.columns.length}</div>
+                    <div class="stat-label">Data Fields</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${formatFileSize(data.file_size)}</div>
+                    <div class="stat-label">File Size</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${new Date(data.last_modified * 1000).toLocaleDateString()}</div>
+                    <div class="stat-label">Last Updated</div>
+                </div>
+            `;
 
             excelStats.innerHTML = statsHTML;
             excelStats.style.display = 'grid';
@@ -1372,7 +1594,8 @@
                 const response = await fetch(`${API_URL}/invoices/tracking/dashboard${datasetQuery}`, {
                     headers: {
                         'Authorization': `Bearer ${currentToken}`
-                    }
+                    },
+                    credentials: 'include'
                 });
 
                 if (response.status === 401) {
@@ -1406,23 +1629,23 @@
                 data.collections_health === 'warning' ? '#ffc107' : '#dc3545';
 
             collectionsHealth.innerHTML = `
-        <div class="stat-card">
-            <div class="stat-value" style="color: ${healthColor};">${data.health_percentage.toFixed(1)}%</div>
-            <div class="stat-label">Collections Health</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">$${data.total_outstanding.toFixed(2)}</div>
-            <div class="stat-label">Total Outstanding</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.invoices.length}</div>
-            <div class="stat-label">Total Invoices</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.status_counts.overdue}</div>
-            <div class="stat-label">Overdue Invoices</div>
-        </div>
-    `;
+                <div class="stat-card">
+                    <div class="stat-value" style="color: ${healthColor};">${data.health_percentage.toFixed(1)}%</div>
+                    <div class="stat-label">Collections Health</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">$${data.total_outstanding.toFixed(2)}</div>
+                    <div class="stat-label">Total Outstanding</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${data.invoices.length}</div>
+                    <div class="stat-label">Total Invoices</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${data.status_counts.overdue}</div>
+                    <div class="stat-label">Overdue Invoices</div>
+                </div>
+            `;
             collectionsHealth.style.display = 'grid';
 
             displayStatusPipeline(data);
@@ -1439,32 +1662,32 @@
             const statusCounts = data.status_counts;
 
             document.getElementById('sentInvoices').innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: bold; color: #667eea;">${statusCounts.sent}</div>
-            <div style="font-size: 12px; color: #666;">invoices</div>
-        </div>
-    `;
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${statusCounts.sent}</div>
+                    <div style="font-size: 12px; color: #666;">invoices</div>
+                </div>
+            `;
 
             document.getElementById('viewedInvoices').innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${statusCounts.viewed}</div>
-            <div style="font-size: 12px; color: #666;">invoices</div>
-        </div>
-    `;
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${statusCounts.viewed}</div>
+                    <div style="font-size: 12px; color: #666;">invoices</div>
+                </div>
+            `;
 
             document.getElementById('dueInvoices').innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${statusCounts.due}</div>
-            <div style="font-size: 12px; color: #666;">invoices</div>
-        </div>
-    `;
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${statusCounts.due}</div>
+                    <div style="font-size: 12px; color: #666;">invoices</div>
+                </div>
+            `;
 
             document.getElementById('overdueInvoices').innerHTML = `
-        <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: bold; color: #dc3545;">${statusCounts.overdue}</div>
-            <div style="font-size: 12px; color: #666;">invoices</div>
-        </div>
-    `;
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #dc3545;">${statusCounts.overdue}</div>
+                    <div style="font-size: 12px; color: #666;">invoices</div>
+                </div>
+            `;
         }
 
         function displayCashFlowCalendar(data) {
@@ -1482,13 +1705,13 @@
                 const isPast = date < new Date() && !isToday;
 
                 html += `
-            <tr>
-                <td>${isToday ? 'Today' : date.toLocaleDateString()} ${isPast ? ' (Past)' : ''}</td>
-                <td>$${day.amount.toFixed(2)}</td>
-                <td>${day.invoice_count} invoice(s)</td>
-                <td><span style="color: ${isPast ? '#dc3545' : '#28a745'}">${isPast ? 'Overdue' : 'Upcoming'}</span></td>
-            </tr>
-        `;
+                    <tr>
+                        <td>${isToday ? '<strong>Today</strong>' : date.toLocaleDateString()} ${isPast ? ' (Past)' : ''}</td>
+                        <td>$${day.amount.toFixed(2)}</td>
+                        <td>${day.invoice_count} invoice(s)</td>
+                        <td><span style="color: ${isPast ? '#dc3545' : '#28a745'}">${isPast ? 'Overdue' : 'Upcoming'}</span></td>
+                    </tr>
+                `;
             });
 
             cashFlowBody.innerHTML = html;
@@ -1513,36 +1736,36 @@
                 };
 
                 html += `
-            <tr>
-                <td>${invoice.vendor}</td>
-                <td>${invoice.invoice_number}</td>
-                <td>${invoice.invoice_date}</td>
-                <td>${invoice.due_date}</td>
-                <td>$${invoice.amount.toFixed(2)}</td>
-                <td>
-                    <span style="color: ${statusColors[invoice.status]}; font-weight: bold;">
-                        ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                    </span>
-                </td>
-                <td>
-                    <span style="color: ${reliabilityColors[invoice.client_reliability]}; font-weight: bold;">
-                        ${invoice.client_reliability.charAt(0).toUpperCase() + invoice.client_reliability.slice(1)}
-                    </span>
-                </td>
-                <td>
-                    <button onclick="updateInvoiceStatus('${invoice.id}', 'viewed')" 
-                            style="padding: 4px 8px; font-size: 12px; margin: 2px;" 
-                            ${invoice.status === 'viewed' ? 'disabled' : ''}>
-                        Mark Viewed
-                    </button>
-                    <button onclick="updateInvoiceStatus('${invoice.id}', 'due')" 
-                            style="padding: 4px 8px; font-size: 12px; margin: 2px;"
-                            ${invoice.status === 'due' ? 'disabled' : ''}>
-                        Mark Due
-                    </button>
-                </td>
-            </tr>
-        `;
+                    <tr>
+                        <td>${invoice.vendor}</td>
+                        <td>${invoice.invoice_number}</td>
+                        <td>${invoice.invoice_date}</td>
+                        <td>${invoice.due_date}</td>
+                        <td>$${invoice.amount.toFixed(2)}</td>
+                        <td>
+                            <span style="color: ${statusColors[invoice.status]}; font-weight: bold;">
+                                ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                            </span>
+                        </td>
+                        <td>
+                            <span style="color: ${reliabilityColors[invoice.client_reliability]}; font-weight: bold;">
+                                ${invoice.client_reliability.charAt(0).toUpperCase() + invoice.client_reliability.slice(1)}
+                            </span>
+                        </td>
+                        <td>
+                            <button onclick="updateInvoiceStatus('${invoice.id}', 'viewed')" 
+                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd;" 
+                                    ${invoice.status === 'viewed' ? 'disabled' : ''}>
+                                <i class="fas fa-eye"></i> Viewed
+                            </button>
+                            <button onclick="updateInvoiceStatus('${invoice.id}', 'due')" 
+                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd;"
+                                    ${invoice.status === 'due' ? 'disabled' : ''}>
+                                <i class="fas fa-clock"></i> Due
+                            </button>
+                        </td>
+                    </tr>
+                `;
             });
 
             invoiceTrackingBody.innerHTML = html;
@@ -1641,7 +1864,7 @@
             const file = e.target.files[0];
             if (file) {
                 selectedFiles = [file];
-                uploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
+                uploadArea.innerHTML = `<div class="upload-icon"><i class="fas fa-check-circle"></i></div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
                 parseBtn.disabled = !currentToken;
             }
         }
@@ -1652,10 +1875,10 @@
         function handleBulkFileSelect(e) {
             selectedFiles = Array.from(e.target.files);
             if (selectedFiles.length > 0) {
-                bulkUploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${selectedFiles.length} files selected</strong></p>`;
+                bulkUploadArea.innerHTML = `<div class="upload-icon"><i class="fas fa-check-circle"></i></div><p><strong>${selectedFiles.length} files selected</strong></p>`;
                 fileList.style.display = 'block';
                 fileList.innerHTML = selectedFiles.map(file =>
-                    `<div class="file-item">${file.name}</div>`
+                    `<div class="file-item"><i class="fas fa-file-pdf"></i> ${file.name}</div>`
                 ).join('');
                 bulkParseBtn.disabled = !currentToken;
             }
@@ -1683,10 +1906,10 @@
                     if (input.multiple) {
                         selectedFiles = Array.from(files).filter(f => f.type === 'application/pdf');
                         if (selectedFiles.length > 0) {
-                            bulkUploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${selectedFiles.length} files selected</strong></p>`;
+                            bulkUploadArea.innerHTML = `<div class="upload-icon"><i class="fas fa-check-circle"></i></div><p><strong>${selectedFiles.length} files selected</strong></p>`;
                             fileList.style.display = 'block';
                             fileList.innerHTML = selectedFiles.map(file =>
-                                `<div class="file-item">${file.name}</div>`
+                                `<div class="file-item"><i class="fas fa-file-pdf"></i> ${file.name}</div>`
                             ).join('');
                             bulkParseBtn.disabled = !currentToken;
                         }
@@ -1694,7 +1917,7 @@
                         const file = files[0];
                         if (file.type === 'application/pdf') {
                             selectedFiles = [file];
-                            uploadArea.innerHTML = `<div class="upload-icon">✓</div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
+                            uploadArea.innerHTML = `<div class="upload-icon"><i class="fas fa-check-circle"></i></div><p><strong>${file.name}</strong></p><p style="color: #999;">Ready to parse</p>`;
                             parseBtn.disabled = !currentToken;
                         }
                     }
@@ -1706,7 +1929,10 @@
         bulkParseBtn.addEventListener('click', () => parseFiles(selectedFiles, true));
 
         async function parseFiles(files, isBulk) {
-            if (!files || files.length === 0) return;
+            if (!files || files.length === 0) {
+                alert('Please select files first');
+                return;
+            }
 
             loadingText.textContent = isBulk ? `Parsing ${files.length} invoices...` : 'Parsing your invoice...';
             loading.classList.add('show');
@@ -1719,9 +1945,9 @@
                 if (!currentToken) await getFreshToken();
 
                 if (isBulk && files.length > 1) {
-                    await parseBulkInvoices(files);
+                    await parseBulkInvoicesAPI(files);
                 } else {
-                    await parseSingleInvoice(files[0]);
+                    await parseSingleInvoiceAPI(files[0]);
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -1732,7 +1958,7 @@
             }
         }
 
-        async function parseSingleInvoice(file) {
+        async function parseSingleInvoiceAPI(file) {
             const formData = new FormData();
             formData.append('file', file);
 
@@ -1741,12 +1967,13 @@
                 headers: {
                     'Authorization': `Bearer ${currentToken}`
                 },
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
 
             if (response.status === 401) {
                 await getFreshToken();
-                return await parseSingleInvoice(file);
+                return await parseSingleInvoiceAPI(file);
             }
 
             const data = await response.json();
@@ -1759,38 +1986,34 @@
             }
         }
 
-        async function parseBulkInvoices(files) {
+        async function parseBulkInvoicesAPI(files) {
             const formData = new FormData();
             files.forEach(file => formData.append('files', file));
 
-            // Note: You would need to implement a bulk endpoint that returns dataset_id
-            // For now, we'll simulate bulk parsing by parsing files individually
-            let successful = 0;
-            let detailedResults = [];
-            
-            for (const file of files) {
-                try {
-                    const result = await parseSingleInvoice(file);
-                    successful++;
-                    detailedResults.push({
-                        filename: file.name,
-                        success: true,
-                        error: null
-                    });
-                } catch (error) {
-                    detailedResults.push({
-                        filename: file.name,
-                        success: false,
-                        error: error.message
-                    });
-                }
+            const response = await fetch(`${API_URL}/invoices/parse-bulk`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${currentToken}`
+                },
+                body: formData,
+                credentials: 'include'
+            });
+
+            if (response.status === 401) {
+                await getFreshToken();
+                return await parseBulkInvoicesAPI(files);
             }
+
+            const data = await response.json();
+            handleBulkResponse(data, response.ok);
             
-            handleBulkResponse({
-                files_processed: files.length,
-                files_successful: successful,
-                detailed_results: detailedResults
-            }, true);
+            // Update current dataset and refresh selector
+            if (data.dataset_id) {
+                currentDatasetId = data.dataset_id;
+                currentDatasetIdTracking = data.dataset_id;
+                await populateDatasetSelector();
+                await populateDatasetSelectorTracking();
+            }
         }
 
         function handleResponse(data, isOk, filename) {
@@ -1832,29 +2055,29 @@
             const metadataHTML = fieldsToDisplay
                 .filter(field => parsedData[field] && parsedData[field] !== 'N/A' && !parsedData[field].toString().includes('Unknown'))
                 .map(field => `
-            <div class="metadata-item">
-                <div class="label">${fieldLabels[field] || field.replace('_', ' ').toUpperCase()}</div>
-                <div class="value">${formatFieldValue(field, parsedData[field])}</div>
-            </div>
-        `).join('');
+                    <div class="metadata-item">
+                        <div class="label">${fieldLabels[field] || field.replace('_', ' ').toUpperCase()}</div>
+                        <div class="value">${formatFieldValue(field, parsedData[field])}</div>
+                    </div>
+                `).join('');
 
             metadata.innerHTML = metadataHTML || '<p>No metadata found</p>';
 
             if (parsedData.line_items && parsedData.line_items.length > 0) {
                 const headers = Object.keys(parsedData.line_items[0]);
                 const tableHTML = `
-            <h3 style="margin-bottom: 12px;">Line Items</h3>
-            <table>
-                <thead>
-                    <tr>${headers.map(h => `<th>${h.toUpperCase().replace('_', ' ')}</th>`).join('')}</tr>
-                </thead>
-                <tbody>
-                    ${parsedData.line_items.map(item => `
-                        <tr>${headers.map(h => `<td>${formatTableValue(h, item[h])}</td>`).join('')}</tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
+                    <h3 style="margin-bottom: 12px;">Line Items</h3>
+                    <table>
+                        <thead>
+                            <tr>${headers.map(h => `<th>${h.toUpperCase().replace('_', ' ')}</th>`).join('')}</tr>
+                        </thead>
+                        <tbody>
+                            ${parsedData.line_items.map(item => `
+                                <tr>${headers.map(h => `<td>${formatTableValue(h, item[h])}</td>`).join('')}</tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
                 lineItems.innerHTML = tableHTML;
             } else {
                 lineItems.innerHTML = '<p style="color: #999;">No line items found</p>';
@@ -1864,66 +2087,66 @@
         }
 
         function displayBulkResults(data) {
-            const successful = data.files_successful || 0;
-            const total = data.files_processed || 0;
+            const successful = data.successful || 0;
+            const total = data.total_files || 0;
 
             metadata.innerHTML = `
-        <div class="metadata-item">
-            <div class="label">FILES PROCESSED</div>
-            <div class="value">${total}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">SUCCESSFUL PARSES</div>
-            <div class="value">${successful}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">FAILED PARSES</div>
-            <div class="value">${total - successful}</div>
-        </div>
-    `;
+                <div class="metadata-item">
+                    <div class="label">FILES PROCESSED</div>
+                    <div class="value">${total}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="label">SUCCESSFUL PARSES</div>
+                    <div class="value">${successful}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="label">FAILED PARSES</div>
+                    <div class="value">${total - successful}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="label">DATASET ID</div>
+                    <div class="value">${data.dataset_id || 'N/A'}</div>
+                </div>
+            `;
 
-            if (data.detailed_results) {
-                const totalFiles = data.detailed_results.length;
-                const displayCount = 10; // Show first 10 files with option to scroll for more
+            if (data.file_names && data.file_names.length > 0) {
+                const displayCount = 10;
+                const totalFiles = data.file_names.length;
 
                 let lineItemsHTML = `
-            <h3 style="margin-bottom: 12px;">File Results</h3>
-            <div class="file-results-summary">
-                Showing ${Math.min(displayCount, totalFiles)} of ${totalFiles} files - scroll to see more
-            </div>
-            <div class="file-results-container">
-                <table class="scrollable-table">
-                    <thead>
-                        <tr>
-                            <th>Filename</th>
-                            <th>Status</th>
-                            <th>Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
+                    <h3 style="margin-bottom: 12px;">File Results</h3>
+                    <div class="file-results-summary">
+                        Showing ${Math.min(displayCount, totalFiles)} of ${totalFiles} files - scroll to see more
+                    </div>
+                    <div class="file-results-container">
+                        <table class="scrollable-table">
+                            <thead>
+                                <tr>
+                                    <th>Filename</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
 
-                // Show only first few results to avoid overwhelming UI
-                data.detailed_results.slice(0, displayCount).forEach(result => {
+                data.file_names.slice(0, displayCount).forEach(filename => {
                     lineItemsHTML += `
-                <tr>
-                    <td>${result.filename}</td>
-                    <td>${result.success ? '✅ Success' : '❌ Failed'}</td>
-                    <td>${result.error || 'Parsed successfully'}</td>
-                </tr>
-            `;
+                        <tr>
+                            <td><i class="fas fa-file-pdf"></i> ${filename}</td>
+                            <td><span style="color: #28a745;">✅ Success</span></td>
+                        </tr>
+                    `;
                 });
 
-                // If there are more files, add a summary row
                 if (totalFiles > displayCount) {
                     const remaining = totalFiles - displayCount;
                     lineItemsHTML += `
-                <tr>
-                    <td colspan="3" style="text-align: center; background: #f8f9fa; font-style: italic;">
-                        ... and ${remaining} more file${remaining > 1 ? 's' : ''}. Scroll up to see all results.
-                    </td>
-                </tr>
-            `;
+                        <tr>
+                            <td colspan="2" style="text-align: center; background: #f8f9fa; font-style: italic;">
+                                ... and ${remaining} more file${remaining > 1 ? 's' : ''}
+                            </td>
+                        </tr>
+                    `;
                 }
 
                 lineItemsHTML += '</tbody></table></div>';
@@ -1953,7 +2176,9 @@
         async function downloadXLSX() {
             try {
                 const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
-                const response = await fetch(`${API_URL}/export/download-xlsx${datasetQuery}`);
+                const response = await fetch(`${API_URL}/export/download-xlsx${datasetQuery}`, {
+                    credentials: 'include'
+                });
 
                 if (response.ok) {
                     const blob = await response.blob();
