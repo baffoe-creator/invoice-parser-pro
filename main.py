@@ -83,6 +83,8 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = 7200
+        self.bulk_operations: Dict[str, Dict[str, Any]] = {}
+        self.bulk_session_counter = 0
 
     def create_session(self) -> str:
         session_id = secrets.token_urlsafe(32)
@@ -93,6 +95,9 @@ class SessionManager:
             "last_activity": time.time(),
             "datasets": [],
             "last_dataset_id": None,
+            "last_upload_time": 0,
+            "pending_bulk_files": [],
+            "current_bulk_session": None
         }
         return session_id
 
@@ -119,26 +124,87 @@ class SessionManager:
         session = self.get_session(session_id)
         return session.get("invoices", []) if session else []
 
-    def create_dataset(self, session_id: str, kind: str, files: list, parsed_result: dict) -> Optional[str]:
+    def create_dataset(self, session_id: str, kind: str, files: list, parsed_results: list) -> Optional[str]:
         session = self.get_session(session_id)
         if not session:
             return None
+        
         dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+        
+        if kind == "bulk" and len(files) > 1:
+            existing_bulk = next((d for d in session.get("datasets", []) 
+                                if d.get("kind") == "bulk" and set(d.get("files", [])) == set(files)), None)
+            if existing_bulk:
+                return existing_bulk["id"]
+        
         ds = {
             "id": dataset_id,
             "kind": kind,
             "files": files,
             "created_at": time.time(),
-            "parsed_result": parsed_result,
+            "parsed_results": parsed_results,
             "pinned": False,
+            "total_amount": sum(r.get("total_amount", 0) for r in parsed_results if isinstance(r.get("total_amount"), (int, float))),
+            "file_count": len(files),
+            "is_bulk_consolidated": (kind == "bulk" and len(files) > 1)
         }
         session.setdefault("datasets", []).append(ds)
         session["last_dataset_id"] = dataset_id
         return dataset_id
 
+    def add_to_bulk_operation(self, session_id: str, filename: str, parsed_data: Dict[str, Any]) -> None:
+        session = self.get_session(session_id)
+        if not session:
+            return
+        
+        current_time = time.time()
+        last_upload_time = session.get("last_upload_time", 0)
+        
+        if current_time - last_upload_time > 30 or not session.get("current_bulk_session"):
+            session["pending_bulk_files"] = []
+            self.bulk_session_counter += 1
+            session["current_bulk_session"] = f"bulk_{self.bulk_session_counter}"
+        
+        session["pending_bulk_files"].append({
+            "filename": filename,
+            "data": parsed_data,
+            "timestamp": current_time,
+            "bulk_session": session["current_bulk_session"]
+        })
+        session["last_upload_time"] = current_time
+
+    def get_pending_bulk_files(self, session_id: str) -> List[Dict[str, Any]]:
+        session = self.get_session(session_id)
+        if not session:
+            return []
+        return session.get("pending_bulk_files", [])
+
+    def clear_pending_bulk_files(self, session_id: str) -> None:
+        session = self.get_session(session_id)
+        if session:
+            session["pending_bulk_files"] = []
+            session["current_bulk_session"] = None
+
     def list_datasets(self, session_id: str) -> list:
         session = self.get_session(session_id)
-        return session.get("datasets", []) if session else []
+        if not session:
+            return []
+        datasets = session.get("datasets", [])
+        consolidated_datasets = []
+        seen_files = set()
+        
+        for d in datasets:
+            if d.get("is_bulk_consolidated", False):
+                consolidated_datasets.append(d)
+            elif d["kind"] == "bulk" and len(d["files"]) > 1:
+                file_set = frozenset(d["files"])
+                if file_set not in seen_files:
+                    seen_files.add(file_set)
+                    consolidated_datasets.append(d)
+            else:
+                consolidated_datasets.append(d)
+        
+        return sorted(consolidated_datasets, key=lambda x: x["created_at"], reverse=True)
 
     def get_dataset(self, session_id: str, dataset_id: str) -> Optional[dict]:
         session = self.get_session(session_id)
@@ -710,17 +776,43 @@ async def parse_invoice_stateless(
             if not success:
                 raise HTTPException(status_code=400, detail="Session expired")
 
+            xlsx_exporter = get_xlsx_exporter(session_id=session_id)
+            export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
+
+            pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
+            current_time = time.time()
+            
+            if pending_bulk_files:
+                last_file_time = pending_bulk_files[-1]["timestamp"]
+                if current_time - last_file_time > 30:
+                    session_manager.clear_pending_bulk_files(session_id)
+                    pending_bulk_files = []
+            
+            session_manager.add_to_bulk_operation(session_id, filename, parsed_dict)
+            
+            pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
+            
             dataset_id = None
-            if hasattr(session_manager, "create_dataset"):
+            bulk_session_id = session.get("current_bulk_session")
+            
+            if len(pending_bulk_files) >= 2 and all(f["bulk_session"] == bulk_session_id for f in pending_bulk_files):
+                filenames = [f["filename"] for f in pending_bulk_files]
+                parsed_results = [f["data"] for f in pending_bulk_files]
+                
+                dataset_id = session_manager.create_dataset(
+                    session_id=session_id,
+                    kind="bulk",
+                    files=filenames,
+                    parsed_results=parsed_results
+                )
+                session_manager.clear_pending_bulk_files(session_id)
+            else:
                 dataset_id = session_manager.create_dataset(
                     session_id=session_id,
                     kind="single",
                     files=[filename],
-                    parsed_result=parsed_dict
+                    parsed_results=[parsed_dict]
                 )
-
-            xlsx_exporter = get_xlsx_exporter(session_id=session_id)
-            export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
 
             return {
                 "success": True,
@@ -788,6 +880,8 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
     if session_id in session_manager.sessions:
         session_manager.sessions[session_id]["invoices"] = []
+        session_manager.sessions[session_id]["pending_bulk_files"] = []
+        session_manager.sessions[session_id]["current_bulk_session"] = None
     return {"message": "Session cleared", "invoices_count": 0}
 
 
@@ -795,7 +889,17 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
 async def list_datasets(session: dict = Depends(get_current_session)):
     session_id = session.get("session_id") or session.get("user_id")
     datasets = session_manager.list_datasets(session_id) if hasattr(session_manager, "list_datasets") else []
-    return [{"id": d["id"], "kind": d["kind"], "files": d["files"], "created_at": d["created_at"], "pinned": d.get("pinned", False)} for d in datasets]
+    return [{
+        "id": d["id"],
+        "kind": d["kind"],
+        "files": d["files"],
+        "created_at": d["created_at"],
+        "pinned": d.get("pinned", False),
+        "total_amount": d.get("total_amount", 0),
+        "file_count": d.get("file_count", len(d["files"])),
+        "result_count": len(d.get("parsed_results", [])),
+        "is_bulk_consolidated": d.get("is_bulk_consolidated", False)
+    } for d in datasets]
 
 
 @app.get("/api/invoices/datasets/{dataset_id}")
@@ -986,9 +1090,9 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
             ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
             if not ds:
                 raise HTTPException(status_code=404, detail="Dataset not found")
-            parsed_result = ds.get("parsed_result", {})
+            
             rows = []
-            if parsed_result:
+            for parsed_result in ds.get("parsed_results", []):
                 row = {
                     "file_name": parsed_result.get("filename", ""),
                     "vendor": parsed_result.get("vendor", ""),
@@ -1028,7 +1132,9 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
                 "rows": cleaned_rows,
                 "row_count": len(rows),
                 "file_size": 0,
-                "last_modified": time.time(),
+                "last_modified": ds.get("created_at", time.time()),
+                "dataset_kind": ds.get("kind", "single"),
+                "file_count": ds.get("file_count", 0)
             }
 
         if not PANDAS_AVAILABLE:
@@ -1090,10 +1196,28 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
             ds = session_manager.get_dataset(session_id, dataset_id) if hasattr(session_manager, "get_dataset") else None
             if not ds:
                 raise HTTPException(status_code=404, detail="Dataset not found")
-            parsed_result = ds.get("parsed_result", {})
+            
             invoices = []
             total_outstanding = 0
-            if parsed_result:
+            parsed_results = ds.get("parsed_results", [])
+            
+            if not parsed_results:
+                return clean_data_for_json({
+                    "total_outstanding": 0,
+                    "invoices": [],
+                    "status_counts": {"sent": 0, "viewed": 0, "due": 0, "overdue": 0},
+                    "collections_health": "healthy",
+                    "cash_flow_calendar": [],
+                    "health_percentage": 100,
+                    "dataset_info": {
+                        "id": ds["id"],
+                        "kind": ds["kind"],
+                        "file_count": ds.get("file_count", len(ds["files"])),
+                        "total_amount": ds.get("total_amount", 0)
+                    }
+                })
+            
+            for parsed_result in parsed_results:
                 vendor_str = str(parsed_result.get("vendor", ""))
                 invoice_num_str = str(parsed_result.get("invoice_number", ""))
                 invoice_date = parsed_result.get("invoice_date")
@@ -1177,6 +1301,12 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                 "collections_health": collections_health,
                 "cash_flow_calendar": cash_flow_calendar,
                 "health_percentage": health_percentage,
+                "dataset_info": {
+                    "id": ds["id"],
+                    "kind": ds["kind"],
+                    "file_count": ds.get("file_count", len(ds["files"])),
+                    "total_amount": ds.get("total_amount", 0)
+                }
             })
             return result
 
@@ -1344,7 +1474,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
         )
         return result
     except Exception as e:
-        logger.error(f"Dashboard error: {str(e)}")
+        logger.error(f"Dashboard error for dataset {dataset_id}: {str(e)}")
         return clean_data_for_json(
             {
                 "total_outstanding": 0,

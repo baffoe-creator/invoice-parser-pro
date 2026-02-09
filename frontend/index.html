@@ -579,7 +579,7 @@
             justify-content: center;
         }
 
-        .excel-viewer-container {
+        .dataset-manager-container {
             margin-top: 20px;
             position: relative;
             z-index: 1;
@@ -896,10 +896,11 @@
 
         <div class="tab-container">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('single')"><i class="fas fa-file-pdf"></i> Single File</button>
+                <button class="tab active" onclick="switchTab('single')"><i class="fas fa-file-pdf"></i> Single
+                    File</button>
                 <button class="tab" onclick="switchTab('bulk')"><i class="fas fa-folder-open"></i> Bulk Upload</button>
-                <button class="tab" onclick="switchTab('excel-viewer')"><i class="fas fa-table"></i> Excel Viewer</button>
-                <button class="tab" onclick="switchTab('invoice-tracking')"><i class="fas fa-chart-line"></i> Invoice Tracking</button>
+                <button class="tab" onclick="switchTab('dataset-manager')"><i class="fas fa-database"></i> Dataset
+                    Manager</button>
             </div>
 
             <div id="single-tab" class="tab-content active">
@@ -927,13 +928,13 @@
                 </div>
             </div>
 
-            <div id="excel-viewer-tab" class="tab-content">
-                <!-- Modern Dataset Selector -->
+            <div id="dataset-manager-tab" class="tab-content">
+                <!-- Consolidated Dataset Selector -->
                 <div class="dataset-selector-container">
                     <div class="dataset-header">
                         <div class="dataset-title"><i class="fas fa-database"></i> Dataset Manager</div>
                         <div class="dataset-meta">
-                            <span class="meta-item"><i class="fas fa-clock"></i> Select dataset to view</span>
+                            <span class="meta-item"><i class="fas fa-clock"></i> Select dataset to view and track</span>
                         </div>
                     </div>
                     <div style="display: flex; gap: 12px; width: 100%; align-items: center;">
@@ -949,174 +950,137 @@
                     </div>
                 </div>
 
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fas fa-chart-bar"></i></div>
-                    <div class="feature-title">Excel Data Analysis</div>
-                    <div class="feature-description">
-                        View and analyze all parsed invoice data in a structured table format.
-                        Monitor data quality, export insights, and track parsing performance metrics.
-                    </div>
-                </div>
-
                 <div class="button-group">
-                    <button class="refresh-btn" onclick="loadExcelData()"><i class="fas fa-sync-alt"></i> Refresh Data</button>
-                    <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel</button>
+                    <button class="refresh-btn" onclick="loadDatasetData()"><i class="fas fa-sync-alt"></i> Refresh
+                        Data</button>
+                    <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download
+                        Excel</button>
+                    <button class="download-btn" onclick="exportTrackingReport()"
+                        style="background: linear-gradient(135deg, #6f42c1 0%, #6610f2 100%);">
+                        <i class="fas fa-file-export"></i> Export Report
+                    </button>
                 </div>
 
-                <div class="excel-viewer-container">
-                    <div id="excelLoading" class="loading" style="display: none;">
+                <!-- Dataset Statistics Section -->
+                <div class="dataset-manager-container">
+                    <div id="datasetLoading" class="loading" style="display: none;">
                         <div class="spinner"></div>
-                        <p>Loading Excel data...</p>
+                        <p>Loading dataset data...</p>
                     </div>
 
-                    <div id="excelStats" class="excel-stats" style="display: none;"></div>
+                    <div id="datasetStats" class="excel-stats" style="display: none;"></div>
 
-                    <div id="excelData" style="display: none;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice Data</h3>
+                    <!-- Excel Data View -->
+                    <div id="excelData" style="display: none; margin-top: 30px;">
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice
+                            Data</h3>
                         <div class="excel-table-container">
                             <table class="excel-table" id="excelTable">
                             </table>
                         </div>
                     </div>
 
-                    <div id="noExcelData" class="no-data-message" style="display: none;">
+                    <!-- Invoice Tracking Dashboard -->
+                    <div id="invoiceTracking" style="display: none; margin-top: 30px;">
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-chart-line"></i> Invoice
+                            Tracking Dashboard</h3>
+
+                        <!-- Collections Health Stats -->
+                        <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
+
+                        <!-- Payment Status Pipeline -->
+                        <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment
+                                Status Pipeline</h4>
+                            <div class="pipeline-container">
+                                <div class="pipeline-stage sent-stage">
+                                    <div class="stage-header" style="background: #667eea; color: white;">
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-paper-plane"></i> Sent
+                                        </h4>
+                                    </div>
+                                    <div class="stage-content">
+                                        <div id="sentInvoices"></div>
+                                    </div>
+                                </div>
+                                <div class="pipeline-stage viewed-stage">
+                                    <div class="stage-header" style="background: #17a2b8; color: white;">
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-eye"></i> Viewed</h4>
+                                    </div>
+                                    <div class="stage-content">
+                                        <div id="viewedInvoices"></div>
+                                    </div>
+                                </div>
+                                <div class="pipeline-stage due-stage">
+                                    <div class="stage-header" style="background: #ffc107; color: black;">
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-clock"></i> Due Soon
+                                        </h4>
+                                    </div>
+                                    <div class="stage-content">
+                                        <div id="dueInvoices"></div>
+                                    </div>
+                                </div>
+                                <div class="pipeline-stage overdue-stage">
+                                    <div class="stage-header" style="background: #dc3545; color: white;">
+                                        <h4 style="margin: 0; font-size: 14px;"><i
+                                                class="fas fa-exclamation-triangle"></i> Overdue</h4>
+                                    </div>
+                                    <div class="stage-content">
+                                        <div id="overdueInvoices"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cash Flow Calendar -->
+                        <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i>
+                                Expected Cash Flow (Next 30 Days)</h4>
+                            <div class="excel-table-container">
+                                <table class="excel-table" id="cashFlowTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Expected Amount</th>
+                                            <th>Invoices</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cashFlowBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Invoice List -->
+                        <div id="invoiceList" style="display: none;">
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All
+                                Invoices</h4>
+                            <div class="excel-table-container">
+                                <table class="excel-table" id="invoiceTrackingTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Vendor</th>
+                                            <th>Invoice #</th>
+                                            <th>Date</th>
+                                            <th>Due Date</th>
+                                            <th>Amount</th>
+                                            <th>Status</th>
+                                            <th>Client Reliability</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="invoiceTrackingBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="noDatasetData" class="no-data-message" style="display: none;">
                         <div style="font-size: 48px; margin-bottom: 16px;"><i class="fas fa-database"></i></div>
-                        <h3>No Excel Data Available</h3>
+                        <h3>No Dataset Available</h3>
                         <p style="margin-top: 8px; color: #666;">
-                            Parse some invoices first to view the data here.<br>
-                            Use the Single File or Bulk Upload tabs to get started.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <div id="invoice-tracking-tab" class="tab-content">
-                <!-- Modern Dataset Selector -->
-                <div class="dataset-selector-container">
-                    <div class="dataset-header">
-                        <div class="dataset-title"><i class="fas fa-chart-line"></i> Tracking Dashboard</div>
-                        <div class="dataset-meta">
-                            <span class="meta-item"><i class="fas fa-chart-pie"></i> Select dataset to track</span>
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: 12px; width: 100%; align-items: center;">
-                        <select id="datasetSelectorTracking" class="dataset-selector">
-                            <option value="">Latest dataset</option>
-                        </select>
-                        <button id="refreshDatasetsTracking" class="dataset-action-btn refresh-btn-small">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                        <button id="deleteDatasetTracking" class="dataset-action-btn delete-btn-small">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon"><i class="fas fa-wallet"></i></div>
-                    <div class="feature-title">Invoice Tracking Dashboard</div>
-                    <div class="feature-description">
-                        Monitor payment status, track receivables, and manage your cash flow.
-                        Get insights into overdue invoices, payment pipelines, and client reliability metrics.
-                    </div>
-                </div>
-
-                <div class="button-group">
-                    <button class="refresh-btn" onclick="loadInvoiceTrackingData()"><i class="fas fa-sync-alt"></i> Refresh Dashboard</button>
-                    <button class="download-btn" onclick="exportTrackingReport()"><i class="fas fa-file-export"></i> Export Report</button>
-                </div>
-
-                <div class="excel-viewer-container">
-                    <div id="trackingLoading" class="loading" style="display: none;">
-                        <div class="spinner"></div>
-                        <p>Loading invoice tracking data...</p>
-                    </div>
-
-                    <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
-
-                    <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment Status Pipeline</h3>
-                        <div class="pipeline-container">
-                            <div class="pipeline-stage sent-stage">
-                                <div class="stage-header" style="background: #667eea; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-paper-plane"></i> Sent</h4>
-                                </div>
-                                <div class="stage-content">
-                                    <div id="sentInvoices"></div>
-                                </div>
-                            </div>
-                            <div class="pipeline-stage viewed-stage">
-                                <div class="stage-header" style="background: #17a2b8; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-eye"></i> Viewed</h4>
-                                </div>
-                                <div class="stage-content">
-                                    <div id="viewedInvoices"></div>
-                                </div>
-                            </div>
-                            <div class="pipeline-stage due-stage">
-                                <div class="stage-header" style="background: #ffc107; color: black;">
-                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-clock"></i> Due Soon</h4>
-                                </div>
-                                <div class="stage-content">
-                                    <div id="dueInvoices"></div>
-                                </div>
-                            </div>
-                            <div class="pipeline-stage overdue-stage">
-                                <div class="stage-header" style="background: #dc3545; color: white;">
-                                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-exclamation-triangle"></i> Overdue</h4>
-                                </div>
-                                <div class="stage-content">
-                                    <div id="overdueInvoices"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i> Expected Cash Flow</h3>
-                        <div class="excel-table-container">
-                            <table class="excel-table" id="cashFlowTable">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Expected Amount</th>
-                                        <th>Invoices</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cashFlowBody">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div id="invoiceList" style="display: none;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All Invoices</h3>
-                        <div class="excel-table-container">
-                            <table class="excel-table" id="invoiceTrackingTable">
-                                <thead>
-                                    <tr>
-                                        <th>Vendor</th>
-                                        <th>Invoice #</th>
-                                        <th>Date</th>
-                                        <th>Due Date</th>
-                                        <th>Amount</th>
-                                        <th>Status</th>
-                                        <th>Client Reliability</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="invoiceTrackingBody">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div id="noTrackingData" class="no-data-message" style="display: none;">
-                        <div style="font-size: 48px; margin-bottom: 16px;"><i class="fas fa-chart-line"></i></div>
-                        <h3>No Invoice Data Available</h3>
-                        <p style="margin-top: 8px; color: #666;">
-                            Parse some invoices first to track payments and receivables.<br>
+                            Parse some invoices first to view and track data.<br>
                             Use the Single File or Bulk Upload tabs to get started.
                         </p>
                     </div>
@@ -1139,7 +1103,8 @@
             <h3><i class="fas fa-file-excel"></i> Export Data - Excel Format</h3>
             <p style="color: #666; margin-bottom: 12px;">Download parsed invoices as Excel file with structured data</p>
             <div class="export-buttons">
-                <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel File</button>
+                <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel
+                    File</button>
             </div>
         </div>
     </div>
@@ -1159,7 +1124,8 @@
             0x6551f7a3c40208d5b4395387a2Afe019C915A458</div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button id="copyEth"
-                style="padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;"><i class="fas fa-copy"></i> Copy</button>
+                style="padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;"><i
+                    class="fas fa-copy"></i> Copy</button>
             <a id="openWallet"
                 style="padding:8px 10px;border-radius:6px;background:#0066ff;color:#fff;text-decoration:none;" href="#"
                 target="_blank"><i class="fas fa-wallet"></i> Wallet</a>
@@ -1171,7 +1137,6 @@
         let currentToken = '';
         let currentSessionId = '';
         let currentDatasetId = '';
-        let currentDatasetIdTracking = '';
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -1188,26 +1153,21 @@
         const authStatus = document.getElementById('authStatus');
         const exportSection = document.getElementById('exportSection');
 
-        const excelLoading = document.getElementById('excelLoading');
-        const excelStats = document.getElementById('excelStats');
+        const datasetLoading = document.getElementById('datasetLoading');
+        const datasetStats = document.getElementById('datasetStats');
         const excelData = document.getElementById('excelData');
         const excelTable = document.getElementById('excelTable');
-        const noExcelData = document.getElementById('noExcelData');
-
-        const trackingLoading = document.getElementById('trackingLoading');
+        const invoiceTracking = document.getElementById('invoiceTracking');
         const collectionsHealth = document.getElementById('collectionsHealth');
         const statusPipeline = document.getElementById('statusPipeline');
         const cashFlowCalendar = document.getElementById('cashFlowCalendar');
         const invoiceList = document.getElementById('invoiceList');
-        const noTrackingData = document.getElementById('noTrackingData');
+        const noDatasetData = document.getElementById('noDatasetData');
 
-        // Dataset selector elements
+        // Dataset selector elements (single consolidated selector)
         const datasetSelector = document.getElementById('datasetSelector');
         const refreshDatasets = document.getElementById('refreshDatasets');
         const deleteDataset = document.getElementById('deleteDataset');
-        const datasetSelectorTracking = document.getElementById('datasetSelectorTracking');
-        const refreshDatasetsTracking = document.getElementById('refreshDatasetsTracking');
-        const deleteDatasetTracking = document.getElementById('deleteDatasetTracking');
 
         // Donation widget elements
         const donateBtn = document.getElementById('donateBtn');
@@ -1215,7 +1175,7 @@
         const copyEth = document.getElementById('copyEth');
         const openWallet = document.getElementById('openWallet');
         const ETH_ADDR = '0x6551f7a3c40208d5b4395387a2Afe019C915A458';
-        
+
         // Donation pill behavior
         donateBtn.addEventListener('click', () => {
             donateModal.style.display = donateModal.style.display === 'none' ? 'block' : 'none';
@@ -1281,69 +1241,96 @@
             }
         }
 
-        async function loadExcelData() {
-            excelLoading.style.display = 'block';
-            excelStats.style.display = 'none';
+        async function loadDatasetData() {
+            datasetLoading.style.display = 'block';
+            datasetStats.style.display = 'none';
             excelData.style.display = 'none';
-            noExcelData.style.display = 'none';
+            invoiceTracking.style.display = 'none';
+            collectionsHealth.style.display = 'none';
+            statusPipeline.style.display = 'none';
+            cashFlowCalendar.style.display = 'none';
+            invoiceList.style.display = 'none';
+            noDatasetData.style.display = 'none';
 
             try {
                 if (!currentToken) await getFreshToken();
+                if (!currentDatasetId) {
+                    // Load default dataset if none selected
+                    await populateDatasetSelector();
+                    if (datasetSelector.value) {
+                        currentDatasetId = datasetSelector.value;
+                    }
+                }
 
+                if (!currentDatasetId) {
+                    datasetLoading.style.display = 'none';
+                    noDatasetData.style.display = 'block';
+                    return;
+                }
+
+                // Load Excel data
                 const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
-                const response = await fetch(`${API_URL}/invoices/xlsx/data${datasetQuery}`, {
+                const excelResponse = await fetch(`${API_URL}/invoices/xlsx/data${datasetQuery}`, {
                     headers: { 'Authorization': `Bearer ${currentToken}` },
                     credentials: 'include'
                 });
 
-                if (response.status === 401) {
+                if (excelResponse.status === 401) {
                     await getFreshToken();
-                    return await loadExcelData();
+                    return await loadDatasetData();
                 }
 
-                if (response.ok) {
-                    const data = await response.json();
-                    displayExcelData(data);
-                } else {
-                    if (response.status === 404) {
-                        excelLoading.style.display = 'none';
-                        noExcelData.style.display = 'block';
-                    } else {
-                        throw new Error('Failed to load Excel data');
-                    }
+                if (excelResponse.ok) {
+                    const excelDataResponse = await excelResponse.json();
+                    displayDatasetStats(excelDataResponse);
+                    displayExcelData(excelDataResponse);
                 }
+
+                // Load tracking data
+                const trackingResponse = await fetch(`${API_URL}/invoices/tracking/dashboard${datasetQuery}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` },
+                    credentials: 'include'
+                });
+
+                if (trackingResponse.ok) {
+                    const trackingData = await trackingResponse.json();
+                    displayInvoiceTrackingData(trackingData);
+                }
+
             } catch (error) {
-                console.error('Error loading Excel data:', error);
-                excelLoading.style.display = 'none';
-                noExcelData.style.display = 'block';
+                console.error('Error loading dataset data:', error);
+                datasetLoading.style.display = 'none';
+                noDatasetData.style.display = 'block';
             }
         }
 
-        function displayExcelData(data) {
-            excelLoading.style.display = 'none';
+        function displayDatasetStats(data) {
+            datasetLoading.style.display = 'none';
+            datasetStats.style.display = 'grid';
 
             const statsHTML = `
                 <div class="stat-card">
-                    <div class="stat-value">${data.row_count}</div>
+                    <div class="stat-value">${data.row_count || 0}</div>
                     <div class="stat-label">Total Invoices</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${data.columns.length}</div>
+                    <div class="stat-value">${data.columns?.length || 0}</div>
                     <div class="stat-label">Data Fields</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${formatFileSize(data.file_size)}</div>
+                    <div class="stat-value">${formatFileSize(data.file_size || 0)}</div>
                     <div class="stat-label">File Size</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${new Date(data.last_modified * 1000).toLocaleDateString()}</div>
+                    <div class="stat-value">${new Date((data.last_modified || Date.now() / 1000) * 1000).toLocaleDateString()}</div>
                     <div class="stat-label">Last Updated</div>
                 </div>
             `;
 
-            excelStats.innerHTML = statsHTML;
-            excelStats.style.display = 'grid';
+            datasetStats.innerHTML = statsHTML;
+        }
 
+        function displayExcelData(data) {
             if (data.rows && data.rows.length > 0) {
                 let tableHTML = '<thead><tr>';
                 data.columns.forEach(column => {
@@ -1364,67 +1351,27 @@
 
                 excelTable.innerHTML = tableHTML;
                 excelData.style.display = 'block';
-            } else {
-                noExcelData.style.display = 'block';
-            }
-        }
-
-        async function loadInvoiceTrackingData() {
-            trackingLoading.style.display = 'block';
-            collectionsHealth.style.display = 'none';
-            statusPipeline.style.display = 'none';
-            cashFlowCalendar.style.display = 'none';
-            invoiceList.style.display = 'none';
-            noTrackingData.style.display = 'none';
-
-            try {
-                if (!currentToken) await getFreshToken();
-
-                const datasetQuery = currentDatasetIdTracking ? `?dataset_id=${encodeURIComponent(currentDatasetIdTracking)}` : '';
-                const response = await fetch(`${API_URL}/invoices/tracking/dashboard${datasetQuery}`, {
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`
-                    },
-                    credentials: 'include'
-                });
-
-                if (response.status === 401) {
-                    await getFreshToken();
-                    return await loadInvoiceTrackingData();
-                }
-
-                if (response.ok) {
-                    const data = await response.json();
-                    displayInvoiceTrackingData(data);
-                } else {
-                    trackingLoading.style.display = 'none';
-                    noTrackingData.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Error loading invoice tracking data:', error);
-                trackingLoading.style.display = 'none';
-                noTrackingData.style.display = 'block';
             }
         }
 
         function displayInvoiceTrackingData(data) {
-            trackingLoading.style.display = 'none';
-
             if (!data.invoices || data.invoices.length === 0) {
-                noTrackingData.style.display = 'block';
                 return;
             }
 
+            invoiceTracking.style.display = 'block';
+
+            // Display collections health
             const healthColor = data.collections_health === 'healthy' ? '#28a745' :
                 data.collections_health === 'warning' ? '#ffc107' : '#dc3545';
 
             collectionsHealth.innerHTML = `
                 <div class="stat-card">
-                    <div class="stat-value" style="color: ${healthColor};">${data.health_percentage.toFixed(1)}%</div>
+                    <div class="stat-value" style="color: ${healthColor};">${data.health_percentage?.toFixed(1) || 0}%</div>
                     <div class="stat-label">Collections Health</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">$${data.total_outstanding.toFixed(2)}</div>
+                    <div class="stat-value">$${data.total_outstanding?.toFixed(2) || 0}</div>
                     <div class="stat-label">Total Outstanding</div>
                 </div>
                 <div class="stat-card">
@@ -1432,24 +1379,27 @@
                     <div class="stat-label">Total Invoices</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${data.status_counts.overdue}</div>
+                    <div class="stat-value">${data.status_counts?.overdue || 0}</div>
                     <div class="stat-label">Overdue Invoices</div>
                 </div>
             `;
             collectionsHealth.style.display = 'grid';
 
+            // Display status pipeline
             displayStatusPipeline(data);
             statusPipeline.style.display = 'block';
 
+            // Display cash flow calendar
             displayCashFlowCalendar(data);
             cashFlowCalendar.style.display = 'block';
 
+            // Display invoice list
             displayInvoiceList(data);
             invoiceList.style.display = 'block';
         }
 
         function displayStatusPipeline(data) {
-            const statusCounts = data.status_counts;
+            const statusCounts = data.status_counts || { sent: 0, viewed: 0, due: 0, overdue: 0 };
 
             document.getElementById('sentInvoices').innerHTML = `
                 <div style="text-align: center;">
@@ -1497,8 +1447,8 @@
                 html += `
                     <tr>
                         <td>${isToday ? '<strong>Today</strong>' : date.toLocaleDateString()} ${isPast ? ' (Past)' : ''}</td>
-                        <td>$${day.amount.toFixed(2)}</td>
-                        <td>${day.invoice_count} invoice(s)</td>
+                        <td>$${day.amount?.toFixed(2) || '0.00'}</td>
+                        <td>${day.invoice_count || 0} invoice(s)</td>
                         <td><span style="color: ${isPast ? '#dc3545' : '#28a745'}">${isPast ? 'Overdue' : 'Upcoming'}</span></td>
                     </tr>
                 `;
@@ -1527,19 +1477,19 @@
 
                 html += `
                     <tr>
-                        <td>${invoice.vendor}</td>
-                        <td>${invoice.invoice_number}</td>
-                        <td>${invoice.invoice_date}</td>
-                        <td>${invoice.due_date}</td>
-                        <td>$${invoice.amount.toFixed(2)}</td>
+                        <td>${invoice.vendor || 'Unknown'}</td>
+                        <td>${invoice.invoice_number || 'N/A'}</td>
+                        <td>${invoice.invoice_date || 'N/A'}</td>
+                        <td>${invoice.due_date || 'N/A'}</td>
+                        <td>$${(invoice.amount || 0).toFixed(2)}</td>
                         <td>
-                            <span style="color: ${statusColors[invoice.status]}; font-weight: bold;">
-                                ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                            <span style="color: ${statusColors[invoice.status] || '#666'}; font-weight: bold;">
+                                ${(invoice.status || 'sent').charAt(0).toUpperCase() + (invoice.status || 'sent').slice(1)}
                             </span>
                         </td>
                         <td>
-                            <span style="color: ${reliabilityColors[invoice.client_reliability]}; font-weight: bold;">
-                                ${invoice.client_reliability.charAt(0).toUpperCase() + invoice.client_reliability.slice(1)}
+                            <span style="color: ${reliabilityColors[invoice.client_reliability] || '#666'}; font-weight: bold;">
+                                ${(invoice.client_reliability || 'medium').charAt(0).toUpperCase() + (invoice.client_reliability || 'medium').slice(1)}
                             </span>
                         </td>
                         <td>
@@ -1577,7 +1527,7 @@
 
                 if (response.ok) {
                     alert('Invoice status updated successfully!');
-                    loadInvoiceTrackingData();
+                    loadDatasetData();
                 } else {
                     alert('Failed to update invoice status');
                 }
@@ -1768,13 +1718,13 @@
 
             const data = await response.json();
             handleResponse(data, response.ok, file.name);
-            
+
             // Update current dataset and refresh selector
             if (data.dataset_id) {
                 currentDatasetId = data.dataset_id;
                 await populateDatasetSelector();
             }
-            
+
             return data;
         }
 
@@ -1782,7 +1732,7 @@
             const results = [];
             const successful = [];
             const failed = [];
-            
+
             for (const file of files) {
                 try {
                     const result = await parseSingleInvoiceAPI(file);
@@ -1793,7 +1743,7 @@
                     failed.push(file.name);
                 }
             }
-            
+
             const data = {
                 success: true,
                 total_files: files.length,
@@ -1803,14 +1753,13 @@
                 failed_files: failed,
                 message: `Bulk parsing completed: ${successful.length} successful, ${failed.length} failed`
             };
-            
+
             handleBulkResponse(data, true);
-            
+
             if (currentDatasetId) {
                 await populateDatasetSelector();
-                await populateDatasetSelectorTracking();
             }
-            
+
             return data;
         }
 
@@ -1912,9 +1861,9 @@
                 const totalFiles = data.file_names.length;
 
                 let lineItemsHTML = `
-                    <h3 style="margin-bottom: 12px;">File Results</h3>
+                    <h3 style="margin-bottom: 12px;">File Results Summary</h3>
                     <div class="file-results-summary">
-                        Showing ${Math.min(displayCount, totalFiles)} of ${totalFiles} files - scroll to see more
+                        Showing ${Math.min(displayCount, totalFiles)} of ${totalFiles} successfully parsed files
                     </div>
                     <div class="file-results-container">
                         <table class="scrollable-table">
@@ -2008,8 +1957,8 @@
 
                     alert('✅ Excel file downloaded successfully!');
 
-                    if (document.getElementById('excel-viewer-tab').classList.contains('active')) {
-                        loadExcelData();
+                    if (document.getElementById('dataset-manager-tab').classList.contains('active')) {
+                        loadDatasetData();
                     }
                 } else {
                     const errorText = await response.text();
@@ -2023,11 +1972,16 @@
 
         // Dataset functions
         async function fetchDatasets() {
-            const res = await fetch(`${API_URL}/invoices/datasets`, {
-                headers: { 'Authorization': `Bearer ${currentToken}` }
-            });
-            if (!res.ok) return [];
-            return await res.json();
+            try {
+                const res = await fetch(`${API_URL}/invoices/datasets`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (!res.ok) return [];
+                return await res.json();
+            } catch (error) {
+                console.error('Error fetching datasets:', error);
+                return [];
+            }
         }
 
         async function populateDatasetSelector() {
@@ -2035,21 +1989,21 @@
                 const list = await fetchDatasets();
                 const sel = document.getElementById('datasetSelector');
                 sel.innerHTML = `<option value="">Latest dataset</option>`;
-                
+
                 list.forEach(ds => {
                     const kind = ds.kind || 'single';
                     const fileCount = ds.file_count || ds.files?.length || 0;
                     const totalAmount = ds.total_amount || 0;
                     const date = new Date(ds.created_at * 1000).toLocaleString();
-                    
+
                     const label = `${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'} - ${fileCount} file(s) - $${totalAmount.toFixed(2)} - ${date}`;
                     const opt = document.createElement('option');
                     opt.value = ds.id;
                     opt.textContent = label;
                     sel.appendChild(opt);
                 });
-                
-                // Select last_dataset_id if none selected
+
+                // Select last dataset if none selected
                 if (!currentDatasetId && list.length > 0) {
                     currentDatasetId = list[0].id; // Newest first
                     sel.value = currentDatasetId;
@@ -2059,97 +2013,35 @@
             }
         }
 
-        async function populateDatasetSelectorTracking() {
-            try {
-                const list = await fetchDatasets();
-                const sel = document.getElementById('datasetSelectorTracking');
-                sel.innerHTML = `<option value="">Latest dataset</option>`;
-                
-                list.forEach(ds => {
-                    const kind = ds.kind || 'single';
-                    const fileCount = ds.file_count || ds.files?.length || 0;
-                    const totalAmount = ds.total_amount || 0;
-                    const date = new Date(ds.created_at * 1000).toLocaleString();
-                    
-                    const label = `${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'} - ${fileCount} file(s) - $${totalAmount.toFixed(2)} - ${date}`;
-                    const opt = document.createElement('option');
-                    opt.value = ds.id;
-                    opt.textContent = label;
-                    sel.appendChild(opt);
-                });
-                
-                // Select last_dataset_id if none selected
-                if (!currentDatasetIdTracking && list.length > 0) {
-                    currentDatasetIdTracking = list[0].id; // Newest first
-                    sel.value = currentDatasetIdTracking;
-                }
-            } catch (error) {
-                console.error('Error populating dataset selector:', error);
-            }
-        }
-
         // Setup dataset selector event listeners
         document.getElementById('refreshDatasets')?.addEventListener('click', () => {
             populateDatasetSelector();
-            loadExcelData();
-        });
-        
-        document.getElementById('refreshDatasetsTracking')?.addEventListener('click', () => {
-            populateDatasetSelectorTracking();
-            loadInvoiceTrackingData();
+            loadDatasetData();
         });
 
         datasetSelector?.addEventListener('change', (e) => {
             currentDatasetId = e.target.value;
-            loadExcelData();
-        });
-
-        datasetSelectorTracking?.addEventListener('change', (e) => {
-            currentDatasetIdTracking = e.target.value;
-            loadInvoiceTrackingData();
+            loadDatasetData();
         });
 
         document.getElementById('deleteDataset')?.addEventListener('click', async () => {
-            if (!currentDatasetId) { 
-                alert('Please select a dataset first'); 
-                return; 
+            if (!currentDatasetId) {
+                alert('Please select a dataset first');
+                return;
             }
             if (!confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) return;
-            
-            const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetId}`, { 
+
+            const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${currentToken}` },
                 credentials: 'include'
             });
-            
+
             if (res.ok) {
                 alert('Dataset deleted successfully');
                 currentDatasetId = '';
                 await populateDatasetSelector();
-                loadExcelData();
-            } else {
-                alert('Failed to delete dataset');
-            }
-        });
-
-        document.getElementById('deleteDatasetTracking')?.addEventListener('click', async () => {
-            if (!currentDatasetIdTracking) { 
-                alert('Please select a dataset first'); 
-                return; 
-            }
-            if (!confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) return;
-            
-            const res = await fetch(`${API_URL}/invoices/datasets/${currentDatasetIdTracking}`, { 
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${currentToken}` },
-                credentials: 'include'
-            });
-            
-            if (res.ok) {
-                alert('Dataset deleted successfully');
-                currentDatasetIdTracking = '';
-                await populateDatasetSelectorTracking();
-                loadInvoiceTrackingData();
+                loadDatasetData();
             } else {
                 alert('Failed to delete dataset');
             }
@@ -2162,12 +2054,9 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
 
-            if (tabName === 'excel-viewer') {
-                loadExcelData();
+            if (tabName === 'dataset-manager') {
+                loadDatasetData();
                 populateDatasetSelector();
-            } else if (tabName === 'invoice-tracking') {
-                loadInvoiceTrackingData();
-                populateDatasetSelectorTracking();
             }
         }
 
