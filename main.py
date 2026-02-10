@@ -97,7 +97,9 @@ class SessionManager:
             "last_dataset_id": None,
             "last_upload_time": 0,
             "pending_bulk_files": [],
-            "current_bulk_session": None
+            "current_bulk_session": None,
+            "bulk_upload_in_progress": False,
+            "current_bulk_files": []
         }
         return session_id
 
@@ -131,9 +133,20 @@ class SessionManager:
         
         dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
         
+        # For bulk uploads: consolidate all files from the same bulk session into one dataset
         if kind == "bulk" and len(files) > 1:
-            existing_bulk = next((d for d in session.get("datasets", []) 
-                                if d.get("kind") == "bulk" and set(d.get("files", [])) == set(files)), None)
+            # Clear any pending bulk files after creating the dataset
+            if session.get("bulk_upload_in_progress", False):
+                session["current_bulk_files"] = []
+                session["bulk_upload_in_progress"] = False
+            
+            # Check for duplicate bulk dataset with same files
+            existing_bulk = None
+            for d in session.get("datasets", []):
+                if d.get("kind") == "bulk" and set(d.get("files", [])) == set(files):
+                    existing_bulk = d
+                    break
+            
             if existing_bulk:
                 return existing_bulk["id"]
         
@@ -152,19 +165,35 @@ class SessionManager:
         session["last_dataset_id"] = dataset_id
         return dataset_id
 
+    def start_bulk_upload(self, session_id: str) -> str:
+        session = self.get_session(session_id)
+        if not session:
+            session_id = self.create_session()
+            session = self.get_session(session_id)
+        
+        self.bulk_session_counter += 1
+        bulk_session_id = f"bulk_{self.bulk_session_counter}"
+        
+        session["bulk_upload_in_progress"] = True
+        session["current_bulk_session"] = bulk_session_id
+        session["current_bulk_files"] = []
+        session["pending_bulk_files"] = []
+        
+        return bulk_session_id
+
     def add_to_bulk_operation(self, session_id: str, filename: str, parsed_data: Dict[str, Any]) -> None:
         session = self.get_session(session_id)
         if not session:
             return
         
         current_time = time.time()
-        last_upload_time = session.get("last_upload_time", 0)
         
-        if current_time - last_upload_time > 30 or not session.get("current_bulk_session"):
-            session["pending_bulk_files"] = []
-            self.bulk_session_counter += 1
-            session["current_bulk_session"] = f"bulk_{self.bulk_session_counter}"
+        # If bulk upload not in progress, start one
+        if not session.get("bulk_upload_in_progress", False):
+            self.start_bulk_upload(session_id)
+            session = self.get_session(session_id)
         
+        session["current_bulk_files"].append(filename)
         session["pending_bulk_files"].append({
             "filename": filename,
             "data": parsed_data,
@@ -184,27 +213,18 @@ class SessionManager:
         if session:
             session["pending_bulk_files"] = []
             session["current_bulk_session"] = None
+            session["bulk_upload_in_progress"] = False
+            session["current_bulk_files"] = []
 
     def list_datasets(self, session_id: str) -> list:
         session = self.get_session(session_id)
         if not session:
             return []
+        
         datasets = session.get("datasets", [])
-        consolidated_datasets = []
-        seen_files = set()
         
-        for d in datasets:
-            if d.get("is_bulk_consolidated", False):
-                consolidated_datasets.append(d)
-            elif d["kind"] == "bulk" and len(d["files"]) > 1:
-                file_set = frozenset(d["files"])
-                if file_set not in seen_files:
-                    seen_files.add(file_set)
-                    consolidated_datasets.append(d)
-            else:
-                consolidated_datasets.append(d)
-        
-        return sorted(consolidated_datasets, key=lambda x: x["created_at"], reverse=True)
+        # Return all datasets, both single and bulk
+        return sorted(datasets, key=lambda x: x["created_at"], reverse=True)
 
     def get_dataset(self, session_id: str, dataset_id: str) -> Optional[dict]:
         session = self.get_session(session_id)
@@ -227,6 +247,40 @@ class SessionManager:
         if session.get("last_dataset_id") == dataset_id:
             session["last_dataset_id"] = new_ds[-1]["id"] if new_ds else None
         return True
+
+    def finalize_bulk_upload(self, session_id: str, filenames: List[str], parsed_results: List[Dict[str, Any]]) -> Optional[str]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        
+        if len(filenames) > 1:
+            # Create a bulk dataset with all files
+            dataset_id = self.create_dataset(
+                session_id=session_id,
+                kind="bulk",
+                files=filenames,
+                parsed_results=parsed_results
+            )
+            
+            # Clear bulk session state
+            self.clear_pending_bulk_files(session_id)
+            
+            return dataset_id
+        elif len(filenames) == 1:
+            # Create a single dataset for single file in bulk mode
+            dataset_id = self.create_dataset(
+                session_id=session_id,
+                kind="single",
+                files=filenames,
+                parsed_results=parsed_results
+            )
+            
+            # Clear bulk session state
+            self.clear_pending_bulk_files(session_id)
+            
+            return dataset_id
+        
+        return None
 
 
 session_manager = SessionManager()
@@ -613,6 +667,7 @@ async def init_session(
 async def parse_invoice_stateless(
     file: UploadFile = File(...),
     session: dict = Depends(get_current_session),
+    is_bulk: bool = False  # New parameter to indicate bulk upload
 ):
     try:
         if not file.filename.lower().endswith(".pdf"):
@@ -779,49 +834,42 @@ async def parse_invoice_stateless(
             xlsx_exporter = get_xlsx_exporter(session_id=session_id)
             export_result = xlsx_exporter.append_normalized_data(parsed_dict, filename)
 
-            pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
-            current_time = time.time()
-            
-            if pending_bulk_files:
-                last_file_time = pending_bulk_files[-1]["timestamp"]
-                if current_time - last_file_time > 30:
-                    session_manager.clear_pending_bulk_files(session_id)
-                    pending_bulk_files = []
-            
-            session_manager.add_to_bulk_operation(session_id, filename, parsed_dict)
-            
-            pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
-            
+            # Handle dataset creation based on whether this is a bulk upload or single file
             dataset_id = None
-            bulk_session_id = session.get("current_bulk_session")
             
-            if len(pending_bulk_files) >= 2 and all(f["bulk_session"] == bulk_session_id for f in pending_bulk_files):
-                filenames = [f["filename"] for f in pending_bulk_files]
-                parsed_results = [f["data"] for f in pending_bulk_files]
+            if is_bulk:
+                # Add to bulk operation
+                session_manager.add_to_bulk_operation(session_id, filename, parsed_dict)
                 
-                dataset_id = session_manager.create_dataset(
-                    session_id=session_id,
-                    kind="bulk",
-                    files=filenames,
-                    parsed_results=parsed_results
-                )
-                session_manager.clear_pending_bulk_files(session_id)
+                # Get all pending bulk files for this session
+                pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
+                
+                # Don't create dataset yet for bulk uploads - wait for all files to be processed
+                # The frontend will call a separate endpoint to finalize the bulk upload
+                
             else:
+                # Single file parse - create dataset immediately
                 dataset_id = session_manager.create_dataset(
                     session_id=session_id,
                     kind="single",
                     files=[filename],
                     parsed_results=[parsed_dict]
                 )
+            
+            # Get pending bulk files count for response
+            pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
 
             return {
                 "success": True,
                 "data": parsed_dict,
-                "dataset_id": dataset_id,
+                "dataset_id": dataset_id,  # Will be None for bulk uploads until finalized
                 "session_invoices_count": len(session_manager.get_invoices(session_id)),
                 "export_result": export_result,
                 "parse_mode": parse_mode,
                 "message": f"Invoice parsed using {parse_mode.replace('_', ' ')}",
+                "is_bulk": is_bulk,
+                "pending_bulk_files_count": len(pending_bulk_files),
+                "bulk_session_active": session.get("bulk_upload_in_progress", False)
             }
 
         finally:
@@ -836,6 +884,52 @@ async def parse_invoice_stateless(
     except Exception as e:
         logger.exception(f"Critical error in parse endpoint")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/api/invoices/finalize-bulk-upload")
+async def finalize_bulk_upload(
+    session: dict = Depends(get_current_session)
+):
+    try:
+        session_id = session.get("session_id") or session.get("user_id")
+        
+        # Get all pending bulk files
+        pending_bulk_files = session_manager.get_pending_bulk_files(session_id)
+        
+        if not pending_bulk_files:
+            return {
+                "success": False,
+                "message": "No pending bulk files to finalize"
+            }
+        
+        # Extract filenames and parsed data
+        filenames = [f["filename"] for f in pending_bulk_files]
+        parsed_results = [f["data"] for f in pending_bulk_files]
+        
+        # Finalize the bulk upload (creates a single bulk dataset)
+        dataset_id = session_manager.finalize_bulk_upload(
+            session_id=session_id,
+            filenames=filenames,
+            parsed_results=parsed_results
+        )
+        
+        if dataset_id:
+            return {
+                "success": True,
+                "dataset_id": dataset_id,
+                "file_count": len(filenames),
+                "message": f"Bulk upload finalized with {len(filenames)} files",
+                "filenames": filenames
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to finalize bulk upload"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error finalizing bulk upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to finalize bulk upload: {str(e)}")
 
 
 @app.get("/api/invoices/session")
@@ -882,6 +976,8 @@ async def clear_session_invoices(session: dict = Depends(get_current_session)):
         session_manager.sessions[session_id]["invoices"] = []
         session_manager.sessions[session_id]["pending_bulk_files"] = []
         session_manager.sessions[session_id]["current_bulk_session"] = None
+        session_manager.sessions[session_id]["bulk_upload_in_progress"] = False
+        session_manager.sessions[session_id]["current_bulk_files"] = []
     return {"message": "Session cleared", "invoices_count": 0}
 
 
