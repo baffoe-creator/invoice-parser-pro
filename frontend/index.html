@@ -561,24 +561,6 @@
             box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
         }
 
-        .export-section {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-            position: relative;
-            z-index: 1;
-        }
-
-        .export-buttons {
-            display: flex;
-            gap: 12px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
         .dataset-manager-container {
             margin-top: 20px;
             position: relative;
@@ -716,7 +698,8 @@
         /* Modern Dataset Selector Styles */
         .dataset-selector-container {
             display: flex;
-            gap: 12px;
+            flex-direction: column;
+            gap: 16px;
             align-items: center;
             justify-content: center;
             margin-bottom: 20px;
@@ -729,12 +712,55 @@
             z-index: 1;
         }
 
+        .dataset-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .dataset-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .dataset-meta {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            justify-content: center;
+        }
+
+        .dataset-controls {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
         .dataset-selector {
             padding: 10px 14px;
             border-radius: 8px;
             border: 2px solid #667eea;
             background: white;
-            min-width: 300px;
+            min-width: 250px;
+            max-width: 100%;
+            width: 100%;
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
             color: #333;
@@ -798,6 +824,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            white-space: nowrap;
         }
 
         .refresh-btn-small {
@@ -815,33 +842,6 @@
         .delete-btn-small:hover {
             background: #dc3545;
             color: white;
-        }
-
-        .dataset-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .dataset-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .dataset-meta {
-            font-size: 12px;
-            color: #666;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .meta-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
         }
 
         /* Tooltip for dataset info */
@@ -872,6 +872,64 @@
         .tooltip:hover .tooltiptext {
             visibility: visible;
             opacity: 1;
+        }
+
+        /* Responsive styles for small screens */
+        @media (max-width: 768px) {
+            .dataset-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .dataset-selector {
+                min-width: 100%;
+                width: 100%;
+            }
+
+            .dataset-action-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .pipeline-container {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .tabs {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .tab {
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .button-group {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .button-group button {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+
+            .dataset-selector-container {
+                padding: 12px;
+            }
+
+            .dataset-meta {
+                flex-direction: column;
+                gap: 5px;
+            }
         }
     </style>
 </head>
@@ -913,6 +971,13 @@
                 <div class="button-group">
                     <button id="parseBtn" disabled><i class="fas fa-magic"></i> Parse Invoice</button>
                 </div>
+
+                <!-- Download Excel button inline with results -->
+                <div id="singleDownloadBtn" class="button-group" style="display: none; margin-top: 20px;">
+                    <button class="download-btn" onclick="downloadXLSX()">
+                        <i class="fas fa-download"></i> Download Excel File
+                    </button>
+                </div>
             </div>
 
             <div id="bulk-tab" class="tab-content">
@@ -926,6 +991,13 @@
                 <div class="button-group">
                     <button id="bulkParseBtn" disabled><i class="fas fa-bolt"></i> Parse All Invoices</button>
                 </div>
+
+                <!-- Download Excel button inline with results -->
+                <div id="bulkDownloadBtn" class="button-group" style="display: none; margin-top: 20px;">
+                    <button class="download-btn" onclick="downloadXLSX()">
+                        <i class="fas fa-download"></i> Download Excel File
+                    </button>
+                </div>
             </div>
 
             <div id="dataset-manager-tab" class="tab-content">
@@ -937,7 +1009,7 @@
                             <span class="meta-item"><i class="fas fa-clock"></i> Select dataset to view and track</span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 12px; width: 100%; align-items: center;">
+                    <div class="dataset-controls">
                         <select id="datasetSelector" class="dataset-selector">
                             <option value="">Latest dataset</option>
                         </select>
@@ -955,10 +1027,6 @@
                         Data</button>
                     <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download
                         Excel</button>
-                    <button class="download-btn" onclick="exportTrackingReport()"
-                        style="background: linear-gradient(135deg, #6f42c1 0%, #6610f2 100%);">
-                        <i class="fas fa-file-export"></i> Export Report
-                    </button>
                 </div>
 
                 <!-- Dataset Statistics Section -->
@@ -1099,14 +1167,7 @@
             <div class="line-items" id="lineItems"></div>
         </div>
 
-        <div class="export-section" id="exportSection" style="display: none;">
-            <h3><i class="fas fa-file-excel"></i> Export Data - Excel Format</h3>
-            <p style="color: #666; margin-bottom: 12px;">Download parsed invoices as Excel file with structured data</p>
-            <div class="export-buttons">
-                <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download Excel
-                    File</button>
-            </div>
-        </div>
+        <!-- Export Section removed as requested -->
     </div>
 
     <!-- SUPPORT PILL -->
@@ -1138,6 +1199,17 @@
         let currentSessionId = '';
         let currentDatasetId = '';
 
+        // Tab-specific state management
+        let singleTabResults = {
+            showDownloadButton: false,
+            lastParsedData: null
+        };
+
+        let bulkTabResults = {
+            showDownloadButton: false,
+            lastParsedData: null
+        };
+
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const bulkUploadArea = document.getElementById('bulkUploadArea');
@@ -1151,7 +1223,10 @@
         const metadata = document.getElementById('metadata');
         const lineItems = document.getElementById('lineItems');
         const authStatus = document.getElementById('authStatus');
-        const exportSection = document.getElementById('exportSection');
+
+        // Tab-specific download buttons
+        const singleDownloadBtn = document.getElementById('singleDownloadBtn');
+        const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
 
         const datasetLoading = document.getElementById('datasetLoading');
         const datasetStats = document.getElementById('datasetStats');
@@ -1164,7 +1239,7 @@
         const invoiceList = document.getElementById('invoiceList');
         const noDatasetData = document.getElementById('noDatasetData');
 
-        // Dataset selector elements (single consolidated selector)
+        // Dataset selector elements
         const datasetSelector = document.getElementById('datasetSelector');
         const refreshDatasets = document.getElementById('refreshDatasets');
         const deleteDataset = document.getElementById('deleteDataset');
@@ -1537,10 +1612,6 @@
             }
         }
 
-        function exportTrackingReport() {
-            downloadXLSX();
-        }
-
         function formatColumnName(column) {
             const columnNames = {
                 'file_name': 'File Name',
@@ -1677,7 +1748,11 @@
             loadingText.textContent = isBulk ? `Parsing ${files.length} invoices...` : 'Parsing your invoice...';
             loading.classList.add('show');
             results.classList.remove('show');
-            exportSection.style.display = 'none';
+
+            // Hide tab-specific download buttons
+            singleDownloadBtn.style.display = 'none';
+            bulkDownloadBtn.style.display = 'none';
+
             parseBtn.disabled = true;
             bulkParseBtn.disabled = true;
 
@@ -1717,7 +1792,7 @@
             }
 
             const data = await response.json();
-            handleResponse(data, response.ok, file.name);
+            handleResponse(data, response.ok, file.name, false);
 
             // Update current dataset and refresh selector
             if (data.dataset_id) {
@@ -1763,10 +1838,30 @@
             return data;
         }
 
-        function handleResponse(data, isOk, filename) {
+        function handleResponse(data, isOk, filename, isBulk) {
             if (isOk) {
-                displayResults(data, filename);
-                exportSection.style.display = 'block';
+                // Store tab-specific data
+                if (isBulk) {
+                    bulkTabResults.lastParsedData = data;
+                } else {
+                    singleTabResults.lastParsedData = data;
+                }
+
+                displayResults(data, filename, isBulk);
+
+                // Show tab-specific download button
+                if (isBulk) {
+                    bulkTabResults.showDownloadButton = true;
+                    if (document.getElementById('bulk-tab').classList.contains('active')) {
+                        bulkDownloadBtn.style.display = 'flex';
+                    }
+                } else {
+                    singleTabResults.showDownloadButton = true;
+                    if (document.getElementById('single-tab').classList.contains('active')) {
+                        singleDownloadBtn.style.display = 'flex';
+                    }
+                }
+
                 currentSessionId = data.export_result?.session_id || currentSessionId;
             } else {
                 alert('Failed to parse invoice: ' + (data.detail || data.error || 'Unknown error'));
@@ -1775,14 +1870,23 @@
 
         function handleBulkResponse(data, isOk) {
             if (isOk) {
+                bulkTabResults.lastParsedData = data;
                 displayBulkResults(data);
-                exportSection.style.display = 'block';
+
+                bulkTabResults.showDownloadButton = true;
+                if (document.getElementById('bulk-tab').classList.contains('active')) {
+                    bulkDownloadBtn.style.display = 'flex';
+                }
             } else {
                 alert('Bulk parsing failed: ' + (data.detail || data.error || 'Unknown error'));
             }
         }
 
-        function displayResults(data, filename) {
+        function displayResults(data, filename, isBulk) {
+            // Clear previous results
+            metadata.innerHTML = '';
+            lineItems.innerHTML = '';
+
             const parsedData = data.data || {};
 
             const fieldsToDisplay = [
@@ -1834,6 +1938,10 @@
         }
 
         function displayBulkResults(data) {
+            // Clear previous results
+            metadata.innerHTML = '';
+            lineItems.innerHTML = '';
+
             const successful = data.successful || 0;
             const total = data.total_files || 0;
 
@@ -1898,6 +2006,8 @@
 
                 lineItemsHTML += '</tbody></table></div>';
                 lineItems.innerHTML = lineItemsHTML;
+            } else {
+                lineItems.innerHTML = '<p style="color: #999;">No files processed</p>';
             }
 
             results.classList.add('show');
@@ -2054,7 +2164,27 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
 
-            if (tabName === 'dataset-manager') {
+            // Clear results section when switching tabs
+            results.classList.remove('show');
+            metadata.innerHTML = '';
+            lineItems.innerHTML = '';
+
+            // Show/hide tab-specific download buttons
+            singleDownloadBtn.style.display = 'none';
+            bulkDownloadBtn.style.display = 'none';
+
+            // Restore tab-specific results if they exist
+            if (tabName === 'single' && singleTabResults.lastParsedData) {
+                displayResults(singleTabResults.lastParsedData, singleTabResults.lastParsedData.data?.filename || '', false);
+                if (singleTabResults.showDownloadButton) {
+                    singleDownloadBtn.style.display = 'flex';
+                }
+            } else if (tabName === 'bulk' && bulkTabResults.lastParsedData) {
+                displayBulkResults(bulkTabResults.lastParsedData);
+                if (bulkTabResults.showDownloadButton) {
+                    bulkDownloadBtn.style.display = 'flex';
+                }
+            } else if (tabName === 'dataset-manager') {
                 loadDatasetData();
                 populateDatasetSelector();
             }
