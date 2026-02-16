@@ -773,6 +773,20 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        .dataset-selector optgroup {
+            font-weight: 700;
+            font-style: normal;
+            background: #f8f9ff;
+            color: #667eea;
+            padding: 8px 0;
+        }
+
+        .dataset-selector option {
+            padding: 8px 12px;
+            font-weight: 400;
+            color: #333;
+        }
+
         .dataset-option {
             display: flex;
             align-items: center;
@@ -833,6 +847,16 @@
             border: none;
         }
 
+        .download-btn-small {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+        }
+
+        .download-btn-small:hover {
+            background: linear-gradient(135deg, #20c997 0%, #28a745 100%);
+        }
+
         .delete-btn-small {
             background: transparent;
             color: #dc3545;
@@ -876,6 +900,18 @@
 
         /* Responsive styles for small screens */
         @media (max-width: 768px) {
+            .button-group {
+                flex-direction: row;
+                justify-content: center;
+                gap: 12px;
+            }
+
+            .button-group button {
+                flex: 1 1 auto;
+                max-width: 300px;
+                min-width: 140px;
+            }
+
             .dataset-controls {
                 flex-direction: column;
                 align-items: stretch;
@@ -905,6 +941,12 @@
                 width: 100%;
                 max-width: 300px;
             }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
 
             .button-group {
                 flex-direction: column;
@@ -914,12 +956,6 @@
             .button-group button {
                 width: 100%;
                 max-width: 300px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .container {
-                padding: 20px;
             }
 
             .dataset-selector-container {
@@ -971,8 +1007,6 @@
                 <div class="button-group">
                     <button id="parseBtn" disabled><i class="fas fa-magic"></i> Parse Invoice</button>
                 </div>
-
-                <!-- Download Excel button inline with results -->
                 <div id="singleDownloadBtn" class="button-group" style="display: none; margin-top: 20px;">
                     <button class="download-btn" onclick="downloadXLSX()">
                         <i class="fas fa-download"></i> Download Excel File
@@ -991,8 +1025,6 @@
                 <div class="button-group">
                     <button id="bulkParseBtn" disabled><i class="fas fa-bolt"></i> Parse All Invoices</button>
                 </div>
-
-                <!-- Download Excel button inline with results -->
                 <div id="bulkDownloadBtn" class="button-group" style="display: none; margin-top: 20px;">
                     <button class="download-btn" onclick="downloadXLSX()">
                         <i class="fas fa-download"></i> Download Excel File
@@ -1001,7 +1033,6 @@
             </div>
 
             <div id="dataset-manager-tab" class="tab-content">
-                <!-- Consolidated Dataset Selector -->
                 <div class="dataset-selector-container">
                     <div class="dataset-header">
                         <div class="dataset-title"><i class="fas fa-database"></i> Dataset Manager</div>
@@ -1011,10 +1042,13 @@
                     </div>
                     <div class="dataset-controls">
                         <select id="datasetSelector" class="dataset-selector">
-                            <option value="">Latest dataset</option>
+                            <option value="">Select a dataset...</option>
                         </select>
                         <button id="refreshDatasets" class="dataset-action-btn refresh-btn-small">
                             <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="downloadDatasetBtn" class="dataset-action-btn download-btn-small">
+                            <i class="fas fa-download"></i> Download
                         </button>
                         <button id="deleteDataset" class="dataset-action-btn delete-btn-small">
                             <i class="fas fa-trash"></i> Delete
@@ -1022,14 +1056,6 @@
                     </div>
                 </div>
 
-                <div class="button-group">
-                    <button class="refresh-btn" onclick="loadDatasetData()"><i class="fas fa-sync-alt"></i> Refresh
-                        Data</button>
-                    <button class="download-btn" onclick="downloadXLSX()"><i class="fas fa-download"></i> Download
-                        Excel</button>
-                </div>
-
-                <!-- Dataset Statistics Section -->
                 <div class="dataset-manager-container">
                     <div id="datasetLoading" class="loading" style="display: none;">
                         <div class="spinner"></div>
@@ -1038,7 +1064,6 @@
 
                     <div id="datasetStats" class="excel-stats" style="display: none;"></div>
 
-                    <!-- Excel Data View -->
                     <div id="excelData" style="display: none; margin-top: 30px;">
                         <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice
                             Data</h3>
@@ -1048,15 +1073,12 @@
                         </div>
                     </div>
 
-                    <!-- Invoice Tracking Dashboard -->
                     <div id="invoiceTracking" style="display: none; margin-top: 30px;">
                         <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-chart-line"></i> Invoice
                             Tracking Dashboard</h3>
 
-                        <!-- Collections Health Stats -->
                         <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
 
-                        <!-- Payment Status Pipeline -->
                         <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
                             <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment
                                 Status Pipeline</h4>
@@ -1099,7 +1121,6 @@
                             </div>
                         </div>
 
-                        <!-- Cash Flow Calendar -->
                         <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
                             <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i>
                                 Expected Cash Flow (Next 30 Days)</h4>
@@ -1119,7 +1140,6 @@
                             </div>
                         </div>
 
-                        <!-- Invoice List -->
                         <div id="invoiceList" style="display: none;">
                             <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All
                                 Invoices</h4>
@@ -1166,18 +1186,14 @@
             <div class="metadata" id="metadata"></div>
             <div class="line-items" id="lineItems"></div>
         </div>
-
-        <!-- Export Section removed as requested -->
     </div>
 
-    <!-- SUPPORT PILL -->
     <div id="donatePill" style="position:fixed;right:16px;bottom:16px;z-index:9999;">
         <button id="donateBtn" title="Support this project"
             style="background:#111;color:#fff;border:0;padding:10px 12px;border-radius:999px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.15);cursor:pointer;">
             <i class="fas fa-heart"></i> Support (ETH)
         </button>
     </div>
-    <!-- Donate modal -->
     <div id="donateModal"
         style="display:none;position:fixed;right:16px;bottom:72px;background:#fff;border-radius:8px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,0.2);z-index:10000;">
         <div style="font-weight:700;margin-bottom:8px;"><i class="fas fa-donate"></i> Support Invoice Parser Pro</div>
@@ -1199,7 +1215,6 @@
         let currentSessionId = '';
         let currentDatasetId = '';
 
-        // Tab-specific state management
         let singleTabResults = {
             showDownloadButton: false,
             lastParsedData: null
@@ -1224,7 +1239,6 @@
         const lineItems = document.getElementById('lineItems');
         const authStatus = document.getElementById('authStatus');
 
-        // Tab-specific download buttons
         const singleDownloadBtn = document.getElementById('singleDownloadBtn');
         const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
 
@@ -1239,19 +1253,17 @@
         const invoiceList = document.getElementById('invoiceList');
         const noDatasetData = document.getElementById('noDatasetData');
 
-        // Dataset selector elements
         const datasetSelector = document.getElementById('datasetSelector');
         const refreshDatasets = document.getElementById('refreshDatasets');
+        const downloadDatasetBtn = document.getElementById('downloadDatasetBtn');
         const deleteDataset = document.getElementById('deleteDataset');
 
-        // Donation widget elements
         const donateBtn = document.getElementById('donateBtn');
         const donateModal = document.getElementById('donateModal');
         const copyEth = document.getElementById('copyEth');
         const openWallet = document.getElementById('openWallet');
         const ETH_ADDR = '0x6551f7a3c40208d5b4395387a2Afe019C915A458';
 
-        // Donation pill behavior
         donateBtn.addEventListener('click', () => {
             donateModal.style.display = donateModal.style.display === 'none' ? 'block' : 'none';
         });
@@ -1263,7 +1275,6 @@
                 setTimeout(() => copyEth.innerHTML = '<i class="fas fa-copy"></i> Copy', 1500);
             } catch (err) {
                 console.error('Failed to copy:', err);
-                // Fallback for older browsers
                 const textArea = document.createElement('textarea');
                 textArea.value = ETH_ADDR;
                 document.body.appendChild(textArea);
@@ -1330,7 +1341,6 @@
             try {
                 if (!currentToken) await getFreshToken();
                 if (!currentDatasetId) {
-                    // Load default dataset if none selected
                     await populateDatasetSelector();
                     if (datasetSelector.value) {
                         currentDatasetId = datasetSelector.value;
@@ -1343,7 +1353,13 @@
                     return;
                 }
 
-                // Load Excel data
+                const datasets = await fetchDatasets();
+                const currentDataset = datasets.find(ds => ds.id === currentDatasetId);
+
+                if (currentDataset) {
+                    console.log(`Loading ${currentDataset.kind} dataset: ${currentDataset.id}`);
+                }
+
                 const datasetQuery = currentDatasetId ? `?dataset_id=${encodeURIComponent(currentDatasetId)}` : '';
                 const excelResponse = await fetch(`${API_URL}/invoices/xlsx/data${datasetQuery}`, {
                     headers: { 'Authorization': `Bearer ${currentToken}` },
@@ -1361,7 +1377,6 @@
                     displayExcelData(excelDataResponse);
                 }
 
-                // Load tracking data
                 const trackingResponse = await fetch(`${API_URL}/invoices/tracking/dashboard${datasetQuery}`, {
                     headers: { 'Authorization': `Bearer ${currentToken}` },
                     credentials: 'include'
@@ -1436,7 +1451,6 @@
 
             invoiceTracking.style.display = 'block';
 
-            // Display collections health
             const healthColor = data.collections_health === 'healthy' ? '#28a745' :
                 data.collections_health === 'warning' ? '#ffc107' : '#dc3545';
 
@@ -1460,15 +1474,12 @@
             `;
             collectionsHealth.style.display = 'grid';
 
-            // Display status pipeline
             displayStatusPipeline(data);
             statusPipeline.style.display = 'block';
 
-            // Display cash flow calendar
             displayCashFlowCalendar(data);
             cashFlowCalendar.style.display = 'block';
 
-            // Display invoice list
             displayInvoiceList(data);
             invoiceList.style.display = 'block';
         }
@@ -1749,7 +1760,6 @@
             loading.classList.add('show');
             results.classList.remove('show');
 
-            // Hide tab-specific download buttons
             singleDownloadBtn.style.display = 'none';
             bulkDownloadBtn.style.display = 'none';
 
@@ -1762,7 +1772,7 @@
                 if (isBulk && files.length > 1) {
                     await parseBulkInvoicesAPI(files);
                 } else {
-                    await parseSingleInvoiceAPI(files[0]);
+                    await parseSingleInvoiceAPI(files[0], false, null);
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -1773,11 +1783,20 @@
             }
         }
 
-        async function parseSingleInvoiceAPI(file) {
+        async function parseSingleInvoiceAPI(file, isBulk = false, bulkSessionId = null) {
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${API_URL}/invoices/parse-stateless`, {
+            const url = new URL(`${API_URL}/invoices/parse-stateless`, window.location.origin);
+
+            if (isBulk) {
+                url.searchParams.append('is_bulk', 'true');
+                if (bulkSessionId) {
+                    url.searchParams.append('bulk_session_id', bulkSessionId);
+                }
+            }
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${currentToken}`
@@ -1788,16 +1807,18 @@
 
             if (response.status === 401) {
                 await getFreshToken();
-                return await parseSingleInvoiceAPI(file);
+                return await parseSingleInvoiceAPI(file, isBulk, bulkSessionId);
             }
 
             const data = await response.json();
-            handleResponse(data, response.ok, file.name, false);
 
-            // Update current dataset and refresh selector
-            if (data.dataset_id) {
-                currentDatasetId = data.dataset_id;
-                await populateDatasetSelector();
+            if (!isBulk) {
+                handleResponse(data, response.ok, file.name, false);
+
+                if (data.dataset_id) {
+                    currentDatasetId = data.dataset_id;
+                    await populateDatasetSelector();
+                }
             }
 
             return data;
@@ -1808,14 +1829,57 @@
             const successful = [];
             const failed = [];
 
+            let bulkSessionId = null;
+
             for (const file of files) {
                 try {
-                    const result = await parseSingleInvoiceAPI(file);
+                    const result = await parseSingleInvoiceAPI(file, true, bulkSessionId);
+
+                    if (!bulkSessionId && result.bulk_session_id) {
+                        bulkSessionId = result.bulk_session_id;
+                        console.log(`Bulk session started: ${bulkSessionId}`);
+                    }
+
                     results.push(result);
                     successful.push(file.name);
+
+                    console.log(`Parsed ${successful.length}/${files.length}: ${file.name}`);
+
                 } catch (error) {
                     console.error(`Failed to parse ${file.name}:`, error);
                     failed.push(file.name);
+                }
+            }
+
+            let finalDatasetId = null;
+
+            if (bulkSessionId && successful.length > 0) {
+                try {
+                    console.log(`Finalizing bulk upload with session ${bulkSessionId}`);
+
+                    const finalizeResponse = await fetch(
+                        `${API_URL}/invoices/finalize-bulk-upload?bulk_session_id=${bulkSessionId}`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${currentToken}`
+                            },
+                            credentials: 'include'
+                        }
+                    );
+
+                    if (finalizeResponse.ok) {
+                        const finalizeData = await finalizeResponse.json();
+                        finalDatasetId = finalizeData.dataset_id;
+                        console.log(`Bulk dataset created: ${finalDatasetId}`);
+
+                        currentDatasetId = finalDatasetId;
+                        await populateDatasetSelector();
+                    } else {
+                        console.error('Failed to finalize bulk upload');
+                    }
+                } catch (error) {
+                    console.error('Error finalizing bulk upload:', error);
                 }
             }
 
@@ -1826,12 +1890,15 @@
                 failed: failed.length,
                 file_names: successful,
                 failed_files: failed,
+                dataset_id: finalDatasetId,
+                bulk_session_id: bulkSessionId,
                 message: `Bulk parsing completed: ${successful.length} successful, ${failed.length} failed`
             };
 
             handleBulkResponse(data, true);
 
-            if (currentDatasetId) {
+            if (finalDatasetId) {
+                currentDatasetId = finalDatasetId;
                 await populateDatasetSelector();
             }
 
@@ -1840,7 +1907,6 @@
 
         function handleResponse(data, isOk, filename, isBulk) {
             if (isOk) {
-                // Store tab-specific data
                 if (isBulk) {
                     bulkTabResults.lastParsedData = data;
                 } else {
@@ -1849,7 +1915,6 @@
 
                 displayResults(data, filename, isBulk);
 
-                // Show tab-specific download button
                 if (isBulk) {
                     bulkTabResults.showDownloadButton = true;
                     if (document.getElementById('bulk-tab').classList.contains('active')) {
@@ -1883,7 +1948,6 @@
         }
 
         function displayResults(data, filename, isBulk) {
-            // Clear previous results
             metadata.innerHTML = '';
             lineItems.innerHTML = '';
 
@@ -1938,7 +2002,6 @@
         }
 
         function displayBulkResults(data) {
-            // Clear previous results
             metadata.innerHTML = '';
             lineItems.innerHTML = '';
 
@@ -2080,7 +2143,6 @@
             }
         }
 
-        // Dataset functions
         async function fetchDatasets() {
             try {
                 const res = await fetch(`${API_URL}/invoices/datasets`, {
@@ -2098,35 +2160,75 @@
             try {
                 const list = await fetchDatasets();
                 const sel = document.getElementById('datasetSelector');
-                sel.innerHTML = `<option value="">Latest dataset</option>`;
+                sel.innerHTML = `<option value="">Select a dataset...</option>`;
 
-                list.forEach(ds => {
-                    const kind = ds.kind || 'single';
-                    const fileCount = ds.file_count || ds.files?.length || 0;
-                    const totalAmount = ds.total_amount || 0;
-                    const date = new Date(ds.created_at * 1000).toLocaleString();
+                if (list.length === 0) {
+                    sel.innerHTML = `<option value="">No datasets available</option>`;
+                    return;
+                }
 
-                    const label = `${kind === 'bulk' ? '📦 BULK' : '📄 SINGLE'} - ${fileCount} file(s) - $${totalAmount.toFixed(2)} - ${date}`;
-                    const opt = document.createElement('option');
-                    opt.value = ds.id;
-                    opt.textContent = label;
-                    sel.appendChild(opt);
-                });
+                const singleDatasets = list.filter(ds => ds.kind === 'single');
+                const bulkDatasets = list.filter(ds => ds.kind === 'bulk');
 
-                // Select last dataset if none selected
+                if (singleDatasets.length > 0) {
+                    const singleGroup = document.createElement('optgroup');
+                    singleGroup.label = '📄 Single File Datasets';
+
+                    singleDatasets.forEach(ds => {
+                        const fileCount = ds.file_count || ds.files?.length || 0;
+                        const totalAmount = ds.total_amount || 0;
+                        const date = new Date(ds.created_at * 1000).toLocaleString();
+
+                        const label = `${fileCount} file - $${totalAmount.toFixed(2)} - ${date}`;
+                        const opt = document.createElement('option');
+                        opt.value = ds.id;
+                        opt.textContent = label;
+                        singleGroup.appendChild(opt);
+                    });
+
+                    sel.appendChild(singleGroup);
+                }
+
+                if (bulkDatasets.length > 0) {
+                    const bulkGroup = document.createElement('optgroup');
+                    bulkGroup.label = '📦 Bulk Upload Datasets';
+
+                    bulkDatasets.forEach(ds => {
+                        const fileCount = ds.file_count || ds.files?.length || 0;
+                        const totalAmount = ds.total_amount || 0;
+                        const date = new Date(ds.created_at * 1000).toLocaleString();
+
+                        const label = `${fileCount} files - $${totalAmount.toFixed(2)} - ${date}`;
+                        const opt = document.createElement('option');
+                        opt.value = ds.id;
+                        opt.textContent = label;
+                        bulkGroup.appendChild(opt);
+                    });
+
+                    sel.appendChild(bulkGroup);
+                }
+
                 if (!currentDatasetId && list.length > 0) {
-                    currentDatasetId = list[0].id; // Newest first
+                    currentDatasetId = list[0].id;
+                    sel.value = currentDatasetId;
+                } else if (currentDatasetId) {
                     sel.value = currentDatasetId;
                 }
+
+                console.log(`Loaded ${singleDatasets.length} single and ${bulkDatasets.length} bulk datasets`);
+
             } catch (error) {
                 console.error('Error populating dataset selector:', error);
             }
         }
 
-        // Setup dataset selector event listeners
-        document.getElementById('refreshDatasets')?.addEventListener('click', () => {
+        refreshDatasets?.addEventListener('click', () => {
             populateDatasetSelector();
             loadDatasetData();
+        });
+
+        downloadDatasetBtn?.addEventListener('click', async () => {
+            await downloadXLSX();
         });
 
         datasetSelector?.addEventListener('change', (e) => {
@@ -2134,7 +2236,7 @@
             loadDatasetData();
         });
 
-        document.getElementById('deleteDataset')?.addEventListener('click', async () => {
+        deleteDataset?.addEventListener('click', async () => {
             if (!currentDatasetId) {
                 alert('Please select a dataset first');
                 return;
@@ -2164,16 +2266,13 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
 
-            // Clear results section when switching tabs
             results.classList.remove('show');
             metadata.innerHTML = '';
             lineItems.innerHTML = '';
 
-            // Show/hide tab-specific download buttons
             singleDownloadBtn.style.display = 'none';
             bulkDownloadBtn.style.display = 'none';
 
-            // Restore tab-specific results if they exist
             if (tabName === 'single' && singleTabResults.lastParsedData) {
                 displayResults(singleTabResults.lastParsedData, singleTabResults.lastParsedData.data?.filename || '', false);
                 if (singleTabResults.showDownloadButton) {
