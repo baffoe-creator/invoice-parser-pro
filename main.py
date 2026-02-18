@@ -94,7 +94,7 @@ class SessionManager:
             "last_activity": time.time(),
             "datasets": [],
             "last_dataset_id": None,
-            "pending_bulk_files": {},  # bulk_session_id -> list of files
+            "pending_bulk_files": {},
             "current_bulk_session": None
         }
         return session_id
@@ -154,6 +154,8 @@ class SessionManager:
         
         session["current_bulk_session"] = bulk_session_id
         session["pending_bulk_files"][bulk_session_id] = []
+        
+        logger.info(f"Started new bulk session: {bulk_session_id}")
         
         return bulk_session_id
 
@@ -225,13 +227,11 @@ class SessionManager:
             logger.warning(f"No pending files found for bulk session {bulk_session_id}")
             return None
         
-        # Extract filenames and parsed data
         filenames = [f["filename"] for f in pending_files]
         parsed_results = [f["data"] for f in pending_files]
         
         logger.info(f"Finalizing bulk upload for session {bulk_session_id} with {len(filenames)} files")
         
-        # Create a SINGLE bulk dataset with all files
         dataset_id = self.create_dataset(
             session_id=session_id,
             kind="bulk",
@@ -239,10 +239,9 @@ class SessionManager:
             parsed_results=parsed_results
         )
         
-        # Clear the pending files for this bulk session
         self.clear_pending_bulk_files(session_id, bulk_session_id)
         
-        logger.info(f"Created bulk dataset {dataset_id} with {len(filenames)} files")
+        logger.info(f"Successfully created consolidated bulk dataset {dataset_id} with {len(filenames)} files")
         
         return dataset_id
 
@@ -390,10 +389,8 @@ class XLSXExporter:
 
             rows = []
             for line_item in line_items:
-                # Convert Unix timestamp to readable datetime string
                 parsed_at = normalized_data.get('parsed_at', time.time())
                 if isinstance(parsed_at, (int, float)):
-                    # Convert Unix timestamp to datetime string
                     parsed_timestamp = datetime.fromtimestamp(parsed_at).strftime('%Y-%m-%d %H:%M:%S')
                 else:
                     parsed_timestamp = str(parsed_at)
@@ -413,7 +410,7 @@ class XLSXExporter:
                     'line_item_quantity': line_item.get('quantity', 0),
                     'line_item_unit_price': line_item.get('unit_price', 0),
                     'line_item_amount': line_item.get('amount', 0),
-                    'parsed_timestamp': parsed_timestamp,  # Now a readable string
+                    'parsed_timestamp': parsed_timestamp,
                 }
                 rows.append(row_data)
 
@@ -811,15 +808,11 @@ async def parse_invoice_stateless(
             dataset_id = None
             
             if is_bulk:
-                # For bulk uploads, we need a bulk_session_id
                 if not bulk_session_id:
-                    # Start a new bulk upload session
                     bulk_session_id = session_manager.start_bulk_upload(session_id)
                 
-                # Add to bulk operation
                 session_manager.add_to_bulk_operation(session_id, bulk_session_id, filename, parsed_dict)
                 
-                # Get pending files for this bulk session
                 pending_files = session_manager.get_pending_bulk_files(session_id, bulk_session_id)
                 pending_count = len(pending_files)
                 
@@ -828,7 +821,7 @@ async def parse_invoice_stateless(
                 return {
                     "success": True,
                     "data": parsed_dict,
-                    "dataset_id": None,  # Will be created when bulk upload is finalized
+                    "dataset_id": None,
                     "session_invoices_count": len(session_manager.get_invoices(session_id)),
                     "export_result": export_result,
                     "parse_mode": parse_mode,
@@ -839,7 +832,6 @@ async def parse_invoice_stateless(
                     "bulk_upload_in_progress": True
                 }
             else:
-                # Single file parse - create dataset immediately
                 dataset_id = session_manager.create_dataset(
                     session_id=session_id,
                     kind="single",
@@ -884,7 +876,6 @@ async def finalize_bulk_upload(
         
         logger.info(f"Finalizing bulk upload for session {bulk_session_id}")
         
-        # Get all pending bulk files for this session
         pending_files = session_manager.get_pending_bulk_files(session_id, bulk_session_id)
         
         if not pending_files:
@@ -897,7 +888,6 @@ async def finalize_bulk_upload(
         file_count = len(pending_files)
         logger.info(f"Found {file_count} files to consolidate into one bulk dataset")
         
-        # Finalize the bulk upload - this creates a SINGLE dataset with ALL files
         dataset_id = session_manager.finalize_bulk_upload(
             session_id=session_id,
             bulk_session_id=bulk_session_id
@@ -1094,23 +1084,106 @@ async def export_xlsx(dataset_id: Optional[str] = Query(None)):
 
 
 @app.get("/api/export/download-xlsx")
-async def download_xlsx(dataset_id: Optional[str] = Query(None)):
+async def download_xlsx(
+    dataset_id: Optional[str] = Query(None),
+    session: dict = Depends(get_current_session)
+):
     try:
+        # If dataset_id is provided, generate dataset-specific XLSX
+        if dataset_id:
+            session_id = session.get("session_id") or session.get("user_id")
+            ds = session_manager.get_dataset(session_id, dataset_id)
+            
+            if not ds:
+                raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+            
+            logger.info(f"📥 Generating XLSX for dataset {dataset_id} ({ds.get('kind')} - {ds.get('file_count')} files)")
+            
+            if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
+                raise HTTPException(status_code=503, detail="Excel export not available")
+            
+            # Prepare rows from parsed_results
+            rows = []
+            columns = [
+                "file_name", "vendor", "invoice_number", "invoice_date",
+                "subtotal", "discount_amount", "shipping_amount", "tax_amount",
+                "total_amount", "currency", "line_item_description",
+                "line_item_quantity", "line_item_unit_price", "line_item_amount",
+                "parsed_timestamp"
+            ]
+            
+            for parsed_result in ds.get("parsed_results", []):
+                line_items = parsed_result.get('line_items', [])
+                if not line_items:
+                    line_items = [{'description': '', 'quantity': 0, 'unit_price': 0, 'amount': 0}]
+                
+                for line_item in line_items:
+                    parsed_at = parsed_result.get('parsed_at', time.time())
+                    if isinstance(parsed_at, (int, float)):
+                        parsed_timestamp = datetime.fromtimestamp(parsed_at).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        parsed_timestamp = str(parsed_at)
+                    
+                    row_data = {
+                        'file_name': parsed_result.get('filename', ''),
+                        'vendor': parsed_result.get('vendor', ''),
+                        'invoice_number': parsed_result.get('invoice_number', ''),
+                        'invoice_date': parsed_result.get('invoice_date', ''),
+                        'subtotal': parsed_result.get('subtotal', 0),
+                        'discount_amount': parsed_result.get('discount_amount', 0),
+                        'shipping_amount': parsed_result.get('shipping_amount', 0),
+                        'tax_amount': parsed_result.get('tax_amount', 0),
+                        'total_amount': parsed_result.get('total_amount', 0),
+                        'currency': parsed_result.get('currency', 'USD'),
+                        'line_item_description': line_item.get('description', ''),
+                        'line_item_quantity': line_item.get('quantity', 0),
+                        'line_item_unit_price': line_item.get('unit_price', 0),
+                        'line_item_amount': line_item.get('amount', 0),
+                        'parsed_timestamp': parsed_timestamp,
+                    }
+                    rows.append(row_data)
+            
+            # Create DataFrame and save to temporary file
+            df = pd.DataFrame(rows, columns=columns)
+            
+            # Use a temporary file
+            temp_xlsx_path = os.path.join("data", f"temp_dataset_{dataset_id}.xlsx")
+            df.to_excel(temp_xlsx_path, index=False, engine="openpyxl")
+            
+            logger.info(f"✅ Generated XLSX with {len(rows)} rows for dataset {dataset_id}")
+            
+            # Return the file
+            response = FileResponse(
+                path=temp_xlsx_path,
+                filename=f"dataset_{dataset_id}_{ds.get('kind', 'data')}.xlsx",
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            
+            return response
+        
+        # Fallback: Return latest global XLSX file (backward compatibility)
         data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
+        
         xlsx_files = glob.glob(os.path.join(data_dir, "parsed_invoices_*.xlsx"))
         if not xlsx_files:
             raise HTTPException(status_code=404, detail="No Excel files found")
+        
         latest_file = max(xlsx_files, key=lambda f: os.path.getctime(f))
+        
+        logger.info(f"📥 Downloading latest global XLSX: {os.path.basename(latest_file)}")
+        
         return FileResponse(
             path=latest_file,
             filename=os.path.basename(latest_file),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Download failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
@@ -1178,7 +1251,6 @@ async def get_xlsx_data(dataset_id: Optional[str] = Query(None), session: dict =
             
             rows = []
             for parsed_result in ds.get("parsed_results", []):
-                # Convert parsed_at timestamp to readable format if it's a number
                 parsed_timestamp = parsed_result.get("parsed_at", "")
                 if isinstance(parsed_timestamp, (int, float)):
                     parsed_timestamp = datetime.fromtimestamp(parsed_timestamp).strftime('%Y-%m-%d %H:%M:%S')
