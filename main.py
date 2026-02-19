@@ -78,6 +78,13 @@ except Exception:
     OPENPYXL_AVAILABLE = False
     logger.warning("openpyxl not available - Excel export features will be limited")
 
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logger.warning("httpx not available - webhook features will be limited")
+
 
 class SessionManager:
     def __init__(self):
@@ -95,7 +102,11 @@ class SessionManager:
             "datasets": [],
             "last_dataset_id": None,
             "pending_bulk_files": {},
-            "current_bulk_session": None
+            "current_bulk_session": None,
+            "status_overrides": {},
+            "invoice_notes": {},
+            "invoice_fingerprints": set(),
+            "zapier_webhook_url": None
         }
         return session_id
 
@@ -244,6 +255,81 @@ class SessionManager:
         logger.info(f"Successfully created consolidated bulk dataset {dataset_id} with {len(filenames)} files")
         
         return dataset_id
+
+    def update_invoice_status(self, session_id: str, dataset_id: str, invoice_index: int, new_status: str) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        
+        valid_statuses = {"sent", "viewed", "due", "overdue", "paid"}
+        if new_status not in valid_statuses:
+            return False
+        
+        key = f"{dataset_id}_{invoice_index}"
+        session.setdefault("status_overrides", {})[key] = {
+            "status": new_status,
+            "updated_at": time.time()
+        }
+        logger.info(f"Status override stored: {key} -> {new_status}")
+        return True
+
+    def get_status_override(self, session_id: str, dataset_id: str, invoice_index: int) -> Optional[str]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        key = f"{dataset_id}_{invoice_index}"
+        override = session.get("status_overrides", {}).get(key)
+        return override["status"] if override else None
+
+    def update_invoice_note(self, session_id: str, dataset_id: str, invoice_index: int, note: str) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        key = f"{dataset_id}_{invoice_index}"
+        session.setdefault("invoice_notes", {})[key] = {
+            "note": note[:500],
+            "updated_at": time.time()
+        }
+        return True
+
+    def get_invoice_note(self, session_id: str, dataset_id: str, invoice_index: int) -> str:
+        session = self.get_session(session_id)
+        if not session:
+            return ""
+        key = f"{dataset_id}_{invoice_index}"
+        note_obj = session.get("invoice_notes", {}).get(key)
+        return note_obj["note"] if note_obj else ""
+
+    def set_webhook_url(self, session_id: str, webhook_url: str) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        session["zapier_webhook_url"] = webhook_url.strip() if webhook_url else None
+        logger.info(f"Webhook URL saved for session {session_id[:8]}")
+        return True
+
+    def get_webhook_url(self, session_id: str) -> Optional[str]:
+        session = self.get_session(session_id)
+        return session.get("zapier_webhook_url") if session else None
+
+    def flag_duplicate(self, session_id: str, parsed_dict: dict) -> bool:
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        
+        fingerprint = (
+            str(parsed_dict.get("vendor", "")).lower().strip(),
+            str(parsed_dict.get("invoice_number", "")).lower().strip(),
+            str(round(float(parsed_dict.get("total_amount", 0)), 2))
+        )
+        
+        seen = session.setdefault("invoice_fingerprints", set())
+        if fingerprint in seen:
+            logger.warning(f"Duplicate invoice detected: {fingerprint}")
+            return True
+        
+        seen.add(fingerprint)
+        return False
 
 
 session_manager = SessionManager()
@@ -600,6 +686,43 @@ def initialize_app():
         logger.error(f"Initialization error: {e}")
 
 
+async def fire_zapier_webhook(session_id: str, dataset: dict) -> None:
+    if not HTTPX_AVAILABLE:
+        return
+    
+    webhook_url = session_manager.get_webhook_url(session_id)
+    if not webhook_url:
+        return
+    
+    payload = {
+        "event": "dataset.created",
+        "source": "Invoice Parser Pro",
+        "timestamp": time.time(),
+        "dataset_id": dataset.get("id"),
+        "kind": dataset.get("kind"),
+        "file_count": dataset.get("file_count", 1),
+        "total_amount": dataset.get("total_amount", 0),
+        "files": dataset.get("files", []),
+        "invoices": [
+            {
+                "vendor": r.get("vendor"),
+                "invoice_number": r.get("invoice_number"),
+                "invoice_date": r.get("invoice_date"),
+                "total_amount": r.get("total_amount"),
+                "currency": r.get("currency", "USD"),
+            }
+            for r in dataset.get("parsed_results", [])
+        ],
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(webhook_url, json=payload, timeout=5)
+            logger.info(f"Zapier webhook fired for dataset {dataset.get('id')}")
+    except Exception as e:
+        logger.warning(f"Zapier webhook failed (non-fatal): {e}")
+
+
 @app.middleware("http")
 async def initialize_middleware(request, call_next):
     initialize_app()
@@ -797,6 +920,14 @@ async def parse_invoice_stateless(
                 parsed_dict["parse_error"] = parse_error
 
             session_id = session.get("session_id") or session.get("user_id")
+            
+            is_duplicate = session_manager.flag_duplicate(session_id, parsed_dict)
+            parsed_dict["is_duplicate"] = is_duplicate
+            
+            if is_duplicate:
+                logger.warning(f"Duplicate invoice detected: {filename}")
+                parsed_dict["duplicate_warning"] = "This invoice appears to match a previously parsed invoice (same vendor, number, and amount)."
+
             success = session_manager.add_invoice(session_id, parsed_dict)
 
             if not success:
@@ -829,7 +960,8 @@ async def parse_invoice_stateless(
                     "is_bulk": True,
                     "bulk_session_id": bulk_session_id,
                     "pending_files_count": pending_count,
-                    "bulk_upload_in_progress": True
+                    "bulk_upload_in_progress": True,
+                    "is_duplicate": is_duplicate
                 }
             else:
                 dataset_id = session_manager.create_dataset(
@@ -841,6 +973,11 @@ async def parse_invoice_stateless(
                 
                 logger.info(f"Created single dataset {dataset_id} for file {filename}")
                 
+                if dataset_id:
+                    ds = session_manager.get_dataset(session_id, dataset_id)
+                    if ds:
+                        await fire_zapier_webhook(session_id, ds)
+                
                 return {
                     "success": True,
                     "data": parsed_dict,
@@ -849,7 +986,8 @@ async def parse_invoice_stateless(
                     "export_result": export_result,
                     "parse_mode": parse_mode,
                     "message": f"Invoice parsed using {parse_mode.replace('_', ' ')}",
-                    "is_bulk": False
+                    "is_bulk": False,
+                    "is_duplicate": is_duplicate
                 }
 
         finally:
@@ -895,6 +1033,11 @@ async def finalize_bulk_upload(
         
         if dataset_id:
             logger.info(f"Successfully created consolidated bulk dataset {dataset_id} with {file_count} files")
+            
+            ds = session_manager.get_dataset(session_id, dataset_id)
+            if ds:
+                await fire_zapier_webhook(session_id, ds)
+            
             return {
                 "success": True,
                 "dataset_id": dataset_id,
@@ -1089,7 +1232,6 @@ async def download_xlsx(
     session: dict = Depends(get_current_session)
 ):
     try:
-        # If dataset_id is provided, generate dataset-specific XLSX
         if dataset_id:
             session_id = session.get("session_id") or session.get("user_id")
             ds = session_manager.get_dataset(session_id, dataset_id)
@@ -1102,7 +1244,6 @@ async def download_xlsx(
             if not PANDAS_AVAILABLE or not OPENPYXL_AVAILABLE:
                 raise HTTPException(status_code=503, detail="Excel export not available")
             
-            # Prepare rows from parsed_results
             rows = []
             columns = [
                 "file_name", "vendor", "invoice_number", "invoice_date",
@@ -1143,16 +1284,13 @@ async def download_xlsx(
                     }
                     rows.append(row_data)
             
-            # Create DataFrame and save to temporary file
             df = pd.DataFrame(rows, columns=columns)
             
-            # Use a temporary file
             temp_xlsx_path = os.path.join("data", f"temp_dataset_{dataset_id}.xlsx")
             df.to_excel(temp_xlsx_path, index=False, engine="openpyxl")
             
             logger.info(f"✅ Generated XLSX with {len(rows)} rows for dataset {dataset_id}")
             
-            # Return the file
             response = FileResponse(
                 path=temp_xlsx_path,
                 filename=f"dataset_{dataset_id}_{ds.get('kind', 'data')}.xlsx",
@@ -1161,7 +1299,6 @@ async def download_xlsx(
             
             return response
         
-        # Fallback: Return latest global XLSX file (backward compatibility)
         data_dir = "data"
         if not os.path.exists(data_dir):
             raise HTTPException(status_code=404, detail="Data directory not found")
@@ -1381,7 +1518,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                     }
                 })
             
-            for parsed_result in parsed_results:
+            for idx, parsed_result in enumerate(parsed_results):
                 vendor_str = str(parsed_result.get("vendor", ""))
                 invoice_num_str = str(parsed_result.get("invoice_number", ""))
                 invoice_date = parsed_result.get("invoice_date")
@@ -1393,31 +1530,53 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                 else:
                     invoice_date = datetime.now()
                 due_date = invoice_date + timedelta(days=30)
-                status = "sent"
+                
                 today = datetime.now().date()
                 due_date_date = due_date.date()
+                
                 if due_date_date < today:
-                    status = "overdue"
+                    auto_status = "overdue"
                 elif (due_date_date - today).days <= 7:
-                    status = "due"
-                if hash(vendor_str + invoice_num_str) % 3 == 0:
-                    status = "viewed"
+                    auto_status = "due"
+                else:
+                    auto_status = "sent"
+                
+                persisted_status = session_manager.get_status_override(session_id, dataset_id, idx)
+                status = persisted_status if persisted_status else auto_status
+                
+                note = session_manager.get_invoice_note(session_id, dataset_id, idx)
+                
                 amount = parsed_result.get("total_amount", 0)
                 if not isinstance(amount, (int, float)):
                     try:
                         amount = float(amount)
                     except:
                         amount = 0.0
+                
+                confidence_map = {
+                    "domain_parser": "high",
+                    "enhanced_fallback": "medium",
+                    "basic_fallback": "low",
+                }
+                confidence = confidence_map.get(parsed_result.get("parse_mode", "basic_fallback"), "low")
+                
                 invoice_data = {
-                    "id": f"inv_{hash(vendor_str + invoice_num_str)}",
+                    "id": f"inv_{dataset_id}_{idx}",
+                    "invoice_index": idx,
+                    "dataset_id": dataset_id,
                     "vendor": vendor_str if vendor_str != "" else "Unknown Vendor",
                     "invoice_number": invoice_num_str if invoice_num_str != "" else "N/A",
                     "invoice_date": invoice_date.strftime("%Y-%m-%d"),
                     "due_date": due_date.strftime("%Y-%m-%d"),
                     "amount": amount,
                     "status": status,
-                    "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
+                    "status_is_override": bool(persisted_status),
+                    "note": note,
+                    "confidence": confidence,
+                    "parse_mode": parsed_result.get("parse_mode", "unknown"),
                     "days_until_due": (due_date_date - today).days,
+                    "client_reliability": "high" if hash(vendor_str) % 5 != 0 else "medium",
+                    "is_duplicate": parsed_result.get("is_duplicate", False)
                 }
                 invoices.append(invoice_data)
                 if status in ["sent", "viewed", "due"]:
@@ -1428,6 +1587,7 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
                 "viewed": len([i for i in invoices if i["status"] == "viewed"]),
                 "due": len([i for i in invoices if i["status"] == "due"]),
                 "overdue": len([i for i in invoices if i["status"] == "overdue"]),
+                "paid": len([i for i in invoices if i["status"] == "paid"])
             }
             overdue_amount = sum(i["amount"] for i in invoices if i["status"] == "overdue")
             health_percentage = (
@@ -1652,19 +1812,39 @@ async def get_invoice_tracking_dashboard(dataset_id: Optional[str] = Query(None)
 
 
 @app.post("/api/invoices/tracking/update-status")
-async def update_invoice_status(invoice_data: Dict[str, Any]):
+async def update_invoice_status(
+    invoice_data: Dict[str, Any],
+    session: dict = Depends(get_current_session)
+):
     try:
-        invoice_id = invoice_data.get("id")
+        dataset_id = invoice_data.get("dataset_id")
+        invoice_index = invoice_data.get("invoice_index")
         new_status = invoice_data.get("status")
+        note = invoice_data.get("note")
+        
+        if dataset_id is None or invoice_index is None or not new_status:
+            raise HTTPException(status_code=400, detail="dataset_id, invoice_index, and status are required")
+        
+        session_id = session.get("session_id") or session.get("user_id")
+        
+        ok = session_manager.update_invoice_status(session_id, dataset_id, int(invoice_index), new_status)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Invalid status or session expired")
+        
+        if note is not None:
+            session_manager.update_invoice_note(session_id, dataset_id, int(invoice_index), note)
+        
         return {
             "success": True,
-            "message": f"Invoice status updated to {new_status}",
-            "invoice_id": invoice_id,
+            "message": f"Invoice #{invoice_index} updated to '{new_status}'",
+            "dataset_id": dataset_id,
+            "invoice_index": invoice_index,
+            "new_status": new_status,
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update invoice status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/invoices/xlsx/create-new")
@@ -1684,6 +1864,75 @@ async def create_new_xlsx():
         raise HTTPException(
             status_code=500, detail=f"Failed to create new XLSX: {str(e)}"
         )
+
+
+@app.post("/api/webhooks/settings")
+async def save_webhook_settings(
+    payload: Dict[str, Any],
+    session: dict = Depends(get_current_session)
+):
+    webhook_url = payload.get("webhook_url", "").strip()
+    
+    if webhook_url and not webhook_url.startswith("https://hooks.zapier.com/"):
+        raise HTTPException(status_code=400, detail="Only Zapier webhook URLs (hooks.zapier.com) are accepted")
+    
+    session_id = session.get("session_id") or session.get("user_id")
+    session_manager.set_webhook_url(session_id, webhook_url)
+    
+    return {
+        "success": True,
+        "message": "Webhook URL saved" if webhook_url else "Webhook URL cleared",
+        "webhook_configured": bool(webhook_url),
+    }
+
+
+@app.get("/api/webhooks/settings")
+async def get_webhook_settings(session: dict = Depends(get_current_session)):
+    session_id = session.get("session_id") or session.get("user_id")
+    url = session_manager.get_webhook_url(session_id)
+    masked = (url[:40] + "...") if url and len(url) > 40 else url
+    return {
+        "webhook_configured": bool(url),
+        "webhook_url_preview": masked,
+    }
+
+
+@app.post("/api/webhooks/test")
+async def test_webhook(session: dict = Depends(get_current_session)):
+    if not HTTPX_AVAILABLE:
+        raise HTTPException(status_code=503, detail="httpx not installed")
+    
+    session_id = session.get("session_id") or session.get("user_id")
+    webhook_url = session_manager.get_webhook_url(session_id)
+    
+    if not webhook_url:
+        raise HTTPException(status_code=400, detail="No webhook URL configured")
+    
+    test_payload = {
+        "event": "webhook.test",
+        "source": "Invoice Parser Pro",
+        "timestamp": time.time(),
+        "message": "Webhook connection successful!",
+        "sample_invoice": {
+            "vendor": "Acme Corp",
+            "invoice_number": "INV-TEST-001",
+            "invoice_date": "2025-01-01",
+            "total_amount": 1250.00,
+            "currency": "USD",
+            "status": "sent",
+        },
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(webhook_url, json=test_payload, timeout=8)
+            return {
+                "success": resp.status_code < 400,
+                "status_code": resp.status_code,
+                "message": "Test payload delivered successfully" if resp.status_code < 400 else "Zapier returned an error",
+            }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Webhook delivery failed: {str(e)}")
 
 
 @app.get("/api/invoices/")

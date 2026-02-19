@@ -4,13 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- START SEO SNIPPET -->
     <title>Invoice Parser Pro — Parse PDF invoices to structured Excel</title>
     <meta name="description"
         content="Parse PDF invoices into structured data and export to Excel. Webhook-first, privacy-first, lightweight API for accounting workflows.">
     <link rel="canonical" href="https://invoice-parser-pro.example.com/">
 
-    <!-- Open Graph -->
     <meta property="og:title" content="Invoice Parser Pro — Invoice extraction to Excel">
     <meta property="og:description"
         content="Parse PDF invoices into structured rows (vendor, items, totals). Webhook-first and privacy-first.">
@@ -19,17 +17,13 @@
     <meta property="og:image" content="https://invoice-parser-pro.example.com/og-image.png">
     <meta name="google-site-verification" content="Wc65AFLgAQnj7IorpqN65n1HDvq16_i-eHdpEjP46Fc" />
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Invoice Parser Pro — Invoice extraction to Excel">
 
-    <!-- JSON-LD -->
     <script type="application/ld+json">
     {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Invoice Parser Pro","url":"https://invoice-parser-pro.example.com","description":"Parse PDF invoices to structured data and export to Excel. Webhook-first, privacy-first.","applicationCategory":"BusinessApplication","operatingSystem":"Web"}
     </script>
-    <!-- END SEO SNIPPET -->
 
-    <!-- Google Fonts - Adding Playfair Display for the brutalist header -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -204,10 +198,8 @@
                 #667eea 100%
             ) 1;
             
-            /* Subtle top shadow for depth */
             box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1);
             
-            /* Smooth entrance animation */
             animation: headerSlideIn 0.6s cubic-bezier(0.34, 1.3, 0.64, 1);
         }
 
@@ -1149,7 +1141,6 @@
             }
         }
 
-        /* How-to guide styles (preserved) */
         @keyframes howto-popIn {
             0%   { transform: scale(0.55) translateY(8px); opacity: 0; }
             75%  { transform: scale(1.06) translateY(-2px); }
@@ -1386,6 +1377,24 @@
             .ht-pill, .ht-tower { left: 12px; }
             .ht-tower { width: calc(100vw - 50px); }
         }
+
+        .webhook-status-indicator {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .webhook-status-connected {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.2);
+        }
+        .webhook-status-disconnected {
+            background: rgba(108, 117, 125, 0.1);
+            color: #6c757d;
+            border: 1px solid rgba(108, 117, 125, 0.2);
+        }
     </style>
 </head>
 
@@ -1410,7 +1419,6 @@
                 <p class="brand-tagline">Extract · Organize · Export</p>
             </div>
             
-            <!-- Right: Status indicator -->
             <div class="header-status">
                 <div class="status-dot" title="System ready"></div>
                 <span class="status-text">Ready</span>
@@ -1424,11 +1432,10 @@
 
         <div class="tab-container">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('single')"><i class="fas fa-file-pdf"></i> Single
-                    File</button>
+                <button class="tab active" onclick="switchTab('single')"><i class="fas fa-file-pdf"></i> Single File</button>
                 <button class="tab" onclick="switchTab('bulk')"><i class="fas fa-folder-open"></i> Bulk Upload</button>
-                <button class="tab" onclick="switchTab('dataset-manager')"><i class="fas fa-database"></i> Dataset
-                    Manager</button>
+                <button class="tab" onclick="switchTab('dataset-manager')"><i class="fas fa-database"></i> Dataset Manager</button>
+                <button class="tab" onclick="switchTab('integrations')"><i class="fas fa-plug"></i> Integrations</button>
             </div>
 
             <div id="single-tab" class="tab-content active">
@@ -1497,8 +1504,7 @@
                     <div id="datasetStats" class="excel-stats" style="display: none;"></div>
 
                     <div id="excelData" style="display: none; margin-top: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice
-                            Data</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-table"></i> Parsed Invoice Data</h3>
                         <div class="excel-table-container">
                             <table class="excel-table" id="excelTable">
                             </table>
@@ -1506,19 +1512,16 @@
                     </div>
 
                     <div id="invoiceTracking" style="display: none; margin-top: 30px;">
-                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-chart-line"></i> Invoice
-                            Tracking Dashboard</h3>
+                        <h3 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-chart-line"></i> Invoice Tracking Dashboard</h3>
 
                         <div id="collectionsHealth" style="display: none;" class="excel-stats"></div>
 
                         <div id="statusPipeline" style="display: none; margin-bottom: 30px;">
-                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment
-                                Status Pipeline</h4>
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-stream"></i> Payment Status Pipeline</h4>
                             <div class="pipeline-container">
                                 <div class="pipeline-stage sent-stage">
                                     <div class="stage-header" style="background: #667eea; color: white;">
-                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-paper-plane"></i> Sent
-                                        </h4>
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-paper-plane"></i> Sent</h4>
                                     </div>
                                     <div class="stage-content">
                                         <div id="sentInvoices"></div>
@@ -1534,8 +1537,7 @@
                                 </div>
                                 <div class="pipeline-stage due-stage">
                                     <div class="stage-header" style="background: #ffc107; color: black;">
-                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-clock"></i> Due Soon
-                                        </h4>
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-clock"></i> Due Soon</h4>
                                     </div>
                                     <div class="stage-content">
                                         <div id="dueInvoices"></div>
@@ -1543,8 +1545,7 @@
                                 </div>
                                 <div class="pipeline-stage overdue-stage">
                                     <div class="stage-header" style="background: #dc3545; color: white;">
-                                        <h4 style="margin: 0; font-size: 14px;"><i
-                                                class="fas fa-exclamation-triangle"></i> Overdue</h4>
+                                        <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-exclamation-triangle"></i> Overdue</h4>
                                     </div>
                                     <div class="stage-content">
                                         <div id="overdueInvoices"></div>
@@ -1554,8 +1555,7 @@
                         </div>
 
                         <div id="cashFlowCalendar" style="display: none; margin-bottom: 30px;">
-                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i>
-                                Expected Cash Flow (Next 30 Days)</h4>
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-calendar-alt"></i> Expected Cash Flow (Next 30 Days)</h4>
                             <div class="excel-table-container">
                                 <table class="excel-table" id="cashFlowTable">
                                     <thead>
@@ -1573,8 +1573,7 @@
                         </div>
 
                         <div id="invoiceList" style="display: none;">
-                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All
-                                Invoices</h4>
+                            <h4 style="margin-bottom: 16px; text-align: left;"><i class="fas fa-list-alt"></i> All Invoices</h4>
                             <div class="excel-table-container">
                                 <table class="excel-table" id="invoiceTrackingTable">
                                     <thead>
@@ -1585,7 +1584,8 @@
                                             <th>Due Date</th>
                                             <th>Amount</th>
                                             <th>Status</th>
-                                            <th>Client Reliability</th>
+                                            <th>Confidence</th>
+                                            <th>Note</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -1603,6 +1603,85 @@
                             Parse some invoices first to view and track data.<br>
                             Use the Single File or Bulk Upload tabs to get started.
                         </p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="integrations-tab" class="tab-content">
+                <div class="dataset-selector-container" style="background: linear-gradient(135deg, #fff8f0 0%, #fff2e0 100%); border-color: #ffaa00;">
+                    <div class="dataset-header">
+                        <div class="dataset-title"><i class="fas fa-bolt" style="color: #ff4a00;"></i> Zapier Integration</div>
+                        <div class="dataset-meta">
+                            <span class="meta-item"><i class="fas fa-plug"></i> Connect Invoice Parser Pro to 6,000+ apps</span>
+                        </div>
+                    </div>
+                    
+                    <div style="width: 100%; padding: 10px 0;">
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                            <div style="flex: 2; min-width: 300px;">
+                                <label style="font-size: 13px; font-weight: 600; color: #333; display: block; margin-bottom: 5px; text-align: left;">
+                                    <i class="fas fa-link"></i> Your Zapier Webhook URL
+                                </label>
+                                <input type="url" id="webhookUrl" placeholder="https://hooks.zapier.com/hooks/catch/..." 
+                                       style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 2px solid #ffaa00; font-family: 'Inter', sans-serif; font-size: 14px;">
+                                <p style="font-size: 12px; color: #666; margin-top: 5px; text-align: left;">
+                                    <i class="fas fa-info-circle"></i> Get this URL from Zapier when creating a "Webhooks by Zapier" trigger with "Catch Hook" event.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button id="saveWebhookBtn" class="dataset-action-btn" style="background: linear-gradient(135deg, #ff4a00, #ff6d3a); color: white; border: none;">
+                                    <i class="fas fa-save"></i> Save Webhook
+                                </button>
+                                <button id="testWebhookBtn" class="dataset-action-btn" style="background: white; color: #ff4a00; border: 2px solid #ffaa00;" disabled>
+                                    <i class="fas fa-paper-plane"></i> Test
+                                </button>
+                                <button id="clearWebhookBtn" class="dataset-action-btn delete-btn-small" style="display: none;">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="webhookStatus" style="margin-top: 15px; text-align: left; font-size: 13px;"></div>
+                    </div>
+                    
+                    <div style="width: 100%; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ffe0b0;">
+                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; text-align: left;">
+                            <i class="fas fa-code"></i> Sample Payload (sent when dataset is created)
+                        </h4>
+                        <pre style="background: #1e1e2e; color: #a8f0cc; padding: 15px; border-radius: 8px; font-size: 12px; overflow-x: auto; text-align: left;">{
+  "event": "dataset.created",
+  "source": "Invoice Parser Pro",
+  "timestamp": 1700000000,
+  "dataset_id": "ds_abc123",
+  "kind": "bulk",
+  "file_count": 3,
+  "total_amount": 1250.50,
+  "files": ["invoice1.pdf", "invoice2.pdf"],
+  "invoices": [
+    {
+      "vendor": "Acme Corp",
+      "invoice_number": "INV-001",
+      "invoice_date": "2025-01-15",
+      "total_amount": 1250.50,
+      "currency": "USD"
+    }
+  ]
+}</pre>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div class="stat-card" style="opacity: 0.7;">
+                        <div class="stat-value" style="font-size: 20px;">📊 QuickBooks</div>
+                        <div class="stat-label">Coming Soon</div>
+                    </div>
+                    <div class="stat-card" style="opacity: 0.7;">
+                        <div class="stat-value" style="font-size: 20px;">📧 Email Ingest</div>
+                        <div class="stat-label">Coming Soon</div>
+                    </div>
+                    <div class="stat-card" style="opacity: 0.7;">
+                        <div class="stat-value" style="font-size: 20px;">🔄 Xero</div>
+                        <div class="stat-label">Coming Soon</div>
                     </div>
                 </div>
             </div>
@@ -1641,7 +1720,6 @@
         </div>
     </div>
 
-    <!-- Floating pill how-to guide -->
     <div class="ht-pill" id="htPill">
         <button class="ht-pill-btn" id="htPillBtn" aria-label="How to use Invoice Parser Pro">
             <span class="ht-pill-icon"><i class="fas fa-question"></i></span>
@@ -1649,7 +1727,6 @@
         </button>
     </div>
 
-    <!-- Step tower (rises above the pill) -->
     <div class="ht-tower" id="htTower">
         <div class="ht-tower-wrap">
             <button class="ht-tower-close" id="htClose" aria-label="Close guide">
@@ -1663,7 +1740,7 @@
                             <div class="ht-badge">1</div>
                             <div class="ht-title">Upload a PDF Invoice</div>
                         </div>
-                        <span class="ht-counter">1 / 3</span>
+                        <span class="ht-counter">1 / 4</span>
                     </div>
                     <div class="ht-body">
                         Go to the <span class="ht-tag">Single File</span> tab for one invoice,
@@ -1673,6 +1750,7 @@
                     <div class="ht-foot">
                         <div class="ht-dots">
                             <div class="ht-dot ht-lit"></div>
+                            <div class="ht-dot"></div>
                             <div class="ht-dot"></div>
                             <div class="ht-dot"></div>
                         </div>
@@ -1690,7 +1768,7 @@
                             <div class="ht-badge">2</div>
                             <div class="ht-title">Parse &amp; Download</div>
                         </div>
-                        <span class="ht-counter">2 / 3</span>
+                        <span class="ht-counter">2 / 4</span>
                     </div>
                     <div class="ht-body">
                         Click <span class="ht-tag">Parse Invoice</span> to extract data.
@@ -1702,6 +1780,7 @@
                         <div class="ht-dots">
                             <div class="ht-dot"></div>
                             <div class="ht-dot ht-lit"></div>
+                            <div class="ht-dot"></div>
                             <div class="ht-dot"></div>
                         </div>
                         <button class="ht-next-btn" data-ht-next="3">
@@ -1718,7 +1797,7 @@
                             <div class="ht-badge">3</div>
                             <div class="ht-title">Manage &amp; Track</div>
                         </div>
-                        <span class="ht-counter">3 / 3</span>
+                        <span class="ht-counter">3 / 4</span>
                     </div>
                     <div class="ht-body">
                         In <span class="ht-tag">Dataset Manager</span>, select any
@@ -1728,6 +1807,34 @@
                     </div>
                     <div class="ht-foot">
                         <div class="ht-dots">
+                            <div class="ht-dot"></div>
+                            <div class="ht-dot"></div>
+                            <div class="ht-dot ht-lit"></div>
+                            <div class="ht-dot"></div>
+                        </div>
+                        <button class="ht-next-btn" data-ht-next="4">
+                            Next <i class="fas fa-arrow-right" style="font-size:9px"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="ht-step" id="htStep4">
+                <div class="ht-stripe"></div>
+                <div class="ht-inner">
+                    <div class="ht-top">
+                        <div class="ht-badge-title">
+                            <div class="ht-badge">4</div>
+                            <div class="ht-title">Connect with Zapier</div>
+                        </div>
+                        <span class="ht-counter">4 / 4</span>
+                    </div>
+                    <div class="ht-body">
+                        In the <span class="ht-tag">Integrations</span> tab, paste your Zapier webhook URL.
+                        Your invoice data will automatically flow to thousands of apps.
+                    </div>
+                    <div class="ht-foot">
+                        <div class="ht-dots">
+                            <div class="ht-dot"></div>
                             <div class="ht-dot"></div>
                             <div class="ht-dot"></div>
                             <div class="ht-dot ht-lit"></div>
@@ -1790,11 +1897,19 @@
         const downloadDatasetBtn = document.getElementById('downloadDatasetBtn');
         const deleteDataset = document.getElementById('deleteDataset');
 
+        const webhookUrl = document.getElementById('webhookUrl');
+        const saveWebhookBtn = document.getElementById('saveWebhookBtn');
+        const testWebhookBtn = document.getElementById('testWebhookBtn');
+        const clearWebhookBtn = document.getElementById('clearWebhookBtn');
+        const webhookStatus = document.getElementById('webhookStatus');
+
         const donateBtn = document.getElementById('donateBtn');
         const donateModal = document.getElementById('donateModal');
         const copyEth = document.getElementById('copyEth');
         const openWallet = document.getElementById('openWallet');
         const ETH_ADDR = '0x6551f7a3c40208d5b4395387a2Afe019C915A458';
+
+        let webhookConfigured = false;
 
         donateBtn.addEventListener('click', () => {
             donateModal.style.display = donateModal.style.display === 'none' ? 'block' : 'none';
@@ -1856,8 +1971,93 @@
             if (token) {
                 parseBtn.disabled = false;
                 bulkParseBtn.disabled = false;
+                loadWebhookSettings();
             }
         }
+
+        async function loadWebhookSettings() {
+            try {
+                const res = await fetch(`${API_URL}/webhooks/settings`, {
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    webhookConfigured = data.webhook_configured;
+                    if (data.webhook_url_preview) {
+                        webhookUrl.placeholder = data.webhook_url_preview;
+                    }
+                    testWebhookBtn.disabled = !webhookConfigured;
+                    clearWebhookBtn.style.display = webhookConfigured ? 'inline-flex' : 'none';
+                    updateWebhookStatus(webhookConfigured);
+                }
+            } catch (e) {
+                console.error('Failed to load webhook settings:', e);
+            }
+        }
+
+        function updateWebhookStatus(configured) {
+            if (configured) {
+                webhookStatus.innerHTML = '<span class="webhook-status-indicator webhook-status-connected"><i class="fas fa-check-circle"></i> Webhook connected</span>';
+            } else {
+                webhookStatus.innerHTML = '<span class="webhook-status-indicator webhook-status-disconnected"><i class="fas fa-times-circle"></i> No webhook configured</span>';
+            }
+        }
+
+        saveWebhookBtn?.addEventListener('click', async () => {
+            const url = webhookUrl.value.trim();
+            try {
+                const res = await fetch(`${API_URL}/webhooks/settings`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ webhook_url: url })
+                });
+                if (res.ok) {
+                    webhookConfigured = !!url;
+                    testWebhookBtn.disabled = !webhookConfigured;
+                    clearWebhookBtn.style.display = webhookConfigured ? 'inline-flex' : 'none';
+                    updateWebhookStatus(webhookConfigured);
+                    webhookUrl.value = '';
+                    alert(url ? '✅ Webhook URL saved!' : '✅ Webhook cleared');
+                } else {
+                    const err = await res.json();
+                    alert('❌ Failed to save: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('❌ Network error');
+            }
+        });
+
+        testWebhookBtn?.addEventListener('click', async () => {
+            testWebhookBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            testWebhookBtn.disabled = true;
+            try {
+                const res = await fetch(`${API_URL}/webhooks/test`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Test payload delivered! Check Zapier.');
+                } else {
+                    alert('⚠️ Webhook returned status: ' + data.status_code);
+                }
+            } catch (e) {
+                alert('❌ Test failed: ' + e.message);
+            } finally {
+                testWebhookBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Test';
+                testWebhookBtn.disabled = !webhookConfigured;
+            }
+        });
+
+        clearWebhookBtn?.addEventListener('click', () => {
+            webhookUrl.value = '';
+            saveWebhookBtn.click();
+        });
 
         async function loadDatasetData() {
             datasetLoading.style.display = 'block';
@@ -2017,7 +2217,7 @@
         }
 
         function displayStatusPipeline(data) {
-            const statusCounts = data.status_counts || { sent: 0, viewed: 0, due: 0, overdue: 0 };
+            const statusCounts = data.status_counts || { sent: 0, viewed: 0, due: 0, overdue: 0, paid: 0 };
 
             document.getElementById('sentInvoices').innerHTML = `
                 <div style="text-align: center;">
@@ -2084,18 +2284,22 @@
                     'sent': '#667eea',
                     'viewed': '#17a2b8',
                     'due': '#ffc107',
-                    'overdue': '#dc3545'
+                    'overdue': '#dc3545',
+                    'paid': '#28a745'
                 };
 
-                const reliabilityColors = {
+                const confidenceColors = {
                     'high': '#28a745',
                     'medium': '#ffc107',
                     'low': '#dc3545'
                 };
 
+                const statusOverrideIcon = invoice.status_is_override ? ' <i class="fas fa-pencil-alt" style="font-size:9px; opacity:0.7" title="Manually set"></i>' : '';
+                const duplicateBadge = invoice.is_duplicate ? '<span style="background: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px;">Duplicate</span>' : '';
+
                 html += `
-                    <tr>
-                        <td>${invoice.vendor || 'Unknown'}</td>
+                    <tr data-invoice-index="${invoice.invoice_index}" data-dataset-id="${invoice.dataset_id}">
+                        <td>${invoice.vendor || 'Unknown'} ${duplicateBadge}</td>
                         <td>${invoice.invoice_number || 'N/A'}</td>
                         <td>${invoice.invoice_date || 'N/A'}</td>
                         <td>${invoice.due_date || 'N/A'}</td>
@@ -2104,22 +2308,33 @@
                             <span style="color: ${statusColors[invoice.status] || '#666'}; font-weight: bold;">
                                 ${(invoice.status || 'sent').charAt(0).toUpperCase() + (invoice.status || 'sent').slice(1)}
                             </span>
+                            ${statusOverrideIcon}
                         </td>
                         <td>
-                            <span style="color: ${reliabilityColors[invoice.client_reliability] || '#666'}; font-weight: bold;">
-                                ${(invoice.client_reliability || 'medium').charAt(0).toUpperCase() + (invoice.client_reliability || 'medium').slice(1)}
+                            <span style="color: ${confidenceColors[invoice.confidence] || '#666'}; font-weight: bold;">
+                                ${(invoice.confidence || 'low').toUpperCase()}
                             </span>
                         </td>
                         <td>
-                            <button onclick="updateInvoiceStatus('${invoice.id}', 'viewed')" 
-                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd;" 
-                                    ${invoice.status === 'viewed' ? 'disabled' : ''}>
+                            <input type="text" class="note-input" value="${invoice.note || ''}" 
+                                   placeholder="Add note..." style="width:100px; padding:4px; border-radius:4px; border:1px solid #ddd;"
+                                   onchange="updateInvoiceNote('${invoice.dataset_id}', ${invoice.invoice_index}, this.value)">
+                        </td>
+                        <td>
+                            <button onclick="updateInvoiceStatus('${invoice.dataset_id}', ${invoice.invoice_index}, 'viewed')" 
+                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd; background: ${invoice.status === 'viewed' ? '#17a2b8' : 'transparent'}; color: ${invoice.status === 'viewed' ? 'white' : '#333'};" 
+                                    ${invoice.status === 'viewed' ? '' : ''}>
                                 <i class="fas fa-eye"></i> Viewed
                             </button>
-                            <button onclick="updateInvoiceStatus('${invoice.id}', 'due')" 
-                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd;"
-                                    ${invoice.status === 'due' ? 'disabled' : ''}>
+                            <button onclick="updateInvoiceStatus('${invoice.dataset_id}', ${invoice.invoice_index}, 'due')" 
+                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd; background: ${invoice.status === 'due' ? '#ffc107' : 'transparent'}; color: ${invoice.status === 'due' ? 'white' : '#333'};"
+                                    ${invoice.status === 'due' ? '' : ''}>
                                 <i class="fas fa-clock"></i> Due
+                            </button>
+                            <button onclick="updateInvoiceStatus('${invoice.dataset_id}', ${invoice.invoice_index}, 'paid')" 
+                                    style="padding: 4px 8px; font-size: 12px; margin: 2px; border-radius: 4px; border: 1px solid #ddd; background: ${invoice.status === 'paid' ? '#28a745' : 'transparent'}; color: ${invoice.status === 'paid' ? 'white' : '#333'};"
+                                    ${invoice.status === 'paid' ? '' : ''}>
+                                <i class="fas fa-check"></i> Paid
                             </button>
                         </td>
                     </tr>
@@ -2129,7 +2344,7 @@
             invoiceTrackingBody.innerHTML = html;
         }
 
-        async function updateInvoiceStatus(invoiceId, newStatus) {
+        async function updateInvoiceStatus(datasetId, invoiceIndex, newStatus) {
             try {
                 const response = await fetch(`${API_URL}/invoices/tracking/update-status`, {
                     method: 'POST',
@@ -2138,13 +2353,13 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        id: invoiceId,
+                        dataset_id: datasetId,
+                        invoice_index: invoiceIndex,
                         status: newStatus
                     })
                 });
 
                 if (response.ok) {
-                    alert('Invoice status updated successfully!');
                     loadDatasetData();
                 } else {
                     alert('Failed to update invoice status');
@@ -2152,6 +2367,26 @@
             } catch (error) {
                 console.error('Error updating invoice status:', error);
                 alert('Error updating invoice status');
+            }
+        }
+
+        async function updateInvoiceNote(datasetId, invoiceIndex, note) {
+            try {
+                await fetch(`${API_URL}/invoices/tracking/update-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dataset_id: datasetId,
+                        invoice_index: invoiceIndex,
+                        status: 'sent',
+                        note: note
+                    })
+                });
+            } catch (error) {
+                console.error('Error updating note:', error);
             }
         }
 
@@ -2351,6 +2586,10 @@
                     currentDatasetId = data.dataset_id;
                     await populateDatasetSelector();
                 }
+                
+                if (data.is_duplicate) {
+                    alert('⚠️ Warning: This invoice appears to be a duplicate (same vendor, number, and amount)');
+                }
             }
 
             return data;
@@ -2362,6 +2601,7 @@
             const failed = [];
 
             let bulkSessionId = null;
+            let duplicateCount = 0;
 
             for (const file of files) {
                 try {
@@ -2372,6 +2612,7 @@
                         console.log(`Bulk session started: ${bulkSessionId}`);
                     }
 
+                    if (result.is_duplicate) duplicateCount++;
                     results.push(result);
                     successful.push(file.name);
 
@@ -2424,10 +2665,15 @@
                 failed_files: failed,
                 dataset_id: finalDatasetId,
                 bulk_session_id: bulkSessionId,
-                message: `Bulk parsing completed: ${successful.length} successful, ${failed.length} failed`
+                duplicate_count: duplicateCount,
+                message: `Bulk parsing completed: ${successful.length} successful, ${failed.length} failed, ${duplicateCount} duplicates detected`
             };
 
             handleBulkResponse(data, true);
+
+            if (duplicateCount > 0) {
+                alert(`⚠️ ${duplicateCount} duplicate invoice(s) detected. Check Dataset Manager for details.`);
+            }
 
             if (finalDatasetId) {
                 currentDatasetId = finalDatasetId;
@@ -2539,6 +2785,7 @@
 
             const successful = data.successful || 0;
             const total = data.total_files || 0;
+            const duplicateCount = data.duplicate_count || 0;
 
             metadata.innerHTML = `
                 <div class="metadata-item">
@@ -2552,6 +2799,10 @@
                 <div class="metadata-item">
                     <div class="label">FAILED PARSES</div>
                     <div class="value">${total - successful}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="label">DUPLICATES DETECTED</div>
+                    <div class="value" style="color: ${duplicateCount > 0 ? '#dc3545' : '#28a745'}">${duplicateCount}</div>
                 </div>
                 <div class="metadata-item">
                     <div class="label">DATASET ID</div>
@@ -2818,12 +3069,13 @@
             } else if (tabName === 'dataset-manager') {
                 loadDatasetData();
                 populateDatasetSelector();
+            } else if (tabName === 'integrations') {
+                loadWebhookSettings();
             }
         }
 
         initializeApp();
 
-        // How-to guide script
         (function () {
             'use strict';
 
