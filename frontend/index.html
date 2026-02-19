@@ -181,7 +181,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
-        /* ===== BRUTALIST LETTERHEAD HEADER ===== */
+         
         .app-header {
             position: sticky;
             top: 0;
@@ -189,13 +189,13 @@
             right: 0;
             z-index: 1000;
             
-            /* Subtle glassmorphic effect */
-            background: rgba(255, 255, 255, 0.96);
-            backdrop-filter: blur(8px) saturate(110%);
+             
+             
+            backdrop-filter: blur(1px) saturate(110%);
             -webkit-backdrop-filter: blur(8px) saturate(110%);
             
-            /* Thick gradient border at bottom */
-            border-bottom: 3px solid transparent;
+            
+            border-bottom: 0.4px solid transparent;
             border-image: linear-gradient(90deg, 
                 #667eea 0%, 
                 #764ba2 25%,
@@ -222,7 +222,7 @@
             }
         }
 
-        /* Inner container: controls max-width and padding */
+         
         .header-inner {
             max-width: 1400px;
             margin: 0 auto;
@@ -232,12 +232,14 @@
             justify-content: space-between;
         }
 
-        /* Left side: Brand wordmark */
+         
         .header-brand {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            text-align: left;
+            gap: 3px;
+            text-align: center;
+            flex: 1;
+            transform: translateX(60px);
         }
 
         .brand-wordmark {
@@ -248,13 +250,14 @@
             letter-spacing: -0.02em;
             line-height: 1;
             margin: 0;
+            text-align: center;
             
-            /* Subtle gradient on hover */
+            
             transition: all 0.3s ease;
         }
 
         .brand-wordmark:hover {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ffffff 0%, #0d0d0e 0%, #764ba2 100%, #13a4e7 0%, #0d0d0e 0%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -262,26 +265,27 @@
 
         .brand-tagline {
             font-size: 11px;
-            color: #999;
+            color: #9c08ff;
             text-transform: uppercase;
             letter-spacing: 0.12em;
             font-weight: 600;
             margin: 0;
+            text-align: center;
         }
 
-        /* Right side: Status indicator */
+        
         .header-status {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        /* Animated status dot */
+         
         .status-dot {
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #151618 0%, #10e6f5 100%);
             box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
             animation: statusPulse 2.5s ease-in-out infinite;
             flex-shrink: 0;
@@ -289,13 +293,13 @@
 
         .status-text {
             font-size: 11px;
-            color: #666;
+            color: #020114;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
 
-        /* Version badge */
+         
         .version-badge {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -308,7 +312,7 @@
             box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
         }
 
-        /* Responsive header */
+         
         @media (max-width: 768px) {
             .header-inner {
                 padding: 16px 24px;
@@ -345,32 +349,7 @@
                 display: none;
             }
         }
-
-        /* Animated gradient border (optional - uncomment to enable) */
-        /*
-        .app-header::after {
-            content: '';
-            position: absolute;
-            bottom: -3px;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, 
-                #667eea 0%, 
-                #764ba2 20%,
-                #667eea 40%,
-                #764ba2 60%,
-                #667eea 80%,
-                #764ba2 100%
-            );
-            background-size: 200% 100%;
-            animation: gradientShift 6s linear infinite;
-            opacity: 1;
-            pointer-events: none;
-        }
-        */
-
-        /* ===== CONTAINER STYLES (UNCHANGED) ===== */
+ 
         .container {
             background: white;
             border-radius: 16px;
@@ -1422,10 +1401,10 @@
         <div class="ball"></div>
     </div>
 
-    <!-- Brutalist Letterhead Header -->
+   
     <header class="app-header">
         <div class="header-inner">
-            <!-- Left: Brand wordmark -->
+             
             <div class="header-brand">
                 <h1 class="brand-wordmark">INVOICE PARSER PRO</h1>
                 <p class="brand-tagline">Extract · Organize · Export</p>
